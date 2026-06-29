@@ -8,7 +8,7 @@ from courier.db import Database
 from courier.events import EventBus
 from courier.config import load_settings
 from courier.messages import MessageService
-from courier.models import AgentOut, RegisterAgent, RegisterResult, SendMessage
+from courier.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 import json
 
 
@@ -49,6 +49,18 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     async def directory():
         return await app.state.agents.directory()
 
+    @app.patch("/agents/self", response_model=AgentOut)
+    async def set_name(payload: SetName, agent: AgentOut = Depends(current_agent)):
+        try:
+            return await app.state.agents.set_name(agent.id, payload.name)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+
+    @app.delete("/agents/self", status_code=204)
+    async def deregister(agent: AgentOut = Depends(current_agent)):
+        await app.state.agents.deregister(agent.id)
+        return None
+
     @app.post("/messages", status_code=201)
     async def send(payload: SendMessage, agent: AgentOut = Depends(current_agent)):
         try:
@@ -77,15 +89,19 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     @app.get("/events")
     async def events(request: Request, last_event_id: int | None = None,
                      agent: AgentOut = Depends(current_agent)):
-        # honor Last-Event-ID header if present
         hdr = request.headers.get("last-event-id")
         start = int(hdr) if hdr else last_event_id
         bus: EventBus = app.state.bus
+        agents = app.state.agents
+        await agents.set_status(agent.id, "online")
 
         async def gen():
-            async for ev in bus.stream(agent.id, start):
-                yield {"id": str(ev.id), "event": ev.type,
-                       "data": json.dumps({**ev.payload, "_id": ev.id})}
+            try:
+                async for ev in bus.stream(agent.id, start):
+                    yield {"id": str(ev.id), "event": ev.type,
+                           "data": json.dumps({**ev.payload, "_id": ev.id})}
+            finally:
+                await agents.set_status(agent.id, "offline")
 
         return EventSourceResponse(gen())
 
