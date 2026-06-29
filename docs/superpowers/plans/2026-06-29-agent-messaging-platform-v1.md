@@ -1697,7 +1697,7 @@ def build_wakeup(kind: str, repo: str = "owner/repo"):
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_listener.py -v`
-Expected: 5 passed.
+Expected: 4 passed.
 
 - [ ] **Step 5: Implement `courier/listener/daemon.py`**
 
@@ -1705,6 +1705,7 @@ Expected: 5 passed.
 import argparse
 import asyncio
 import json
+import logging
 import os
 
 import httpx
@@ -1712,11 +1713,14 @@ from httpx_sse import aconnect_sse
 
 from courier.listener.wakeups import build_wakeup
 
+log = logging.getLogger("courier.listener")
+
 
 async def run_daemon(url: str, token: str, wakeup) -> None:
     headers = {"Authorization": f"Bearer {token}"}
     last_id = "0"
     async with httpx.AsyncClient(base_url=url, timeout=None) as client:
+        log.info("listener connected to %s", url)
         while True:
             try:
                 async with aconnect_sse(
@@ -1726,12 +1730,16 @@ async def run_daemon(url: str, token: str, wakeup) -> None:
                     async for sse in es.aiter_sse():
                         last_id = sse.id or last_id
                         if sse.event == "message.received":
-                            await wakeup.wake(json.loads(sse.data))
+                            data = json.loads(sse.data)
+                            log.info("📬 new mail from %s — %r; waking agent",
+                                     data.get("from"), data.get("subject"))
+                            await wakeup.wake(data)
             except (httpx.HTTPError, httpx.TransportError):
                 await asyncio.sleep(1)  # reconnect with backoff
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     p = argparse.ArgumentParser(description="Courier listener daemon")
     p.add_argument("--url", default=os.environ.get("COURIER_URL", "http://127.0.0.1:8765"))
     p.add_argument("--token", default=os.environ.get("COURIER_TOKEN"))
@@ -1752,7 +1760,7 @@ if __name__ == "__main__":
 - [ ] **Step 6: Run the listener tests again (daemon has no new unit test; verified in Task 11 demo)**
 
 Run: `pytest tests/test_listener.py -v`
-Expected: 5 passed.
+Expected: 4 passed.
 
 - [ ] **Step 7: Commit**
 
