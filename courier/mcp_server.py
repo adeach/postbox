@@ -102,15 +102,21 @@ class Session:
         return TmuxWakeup(pane=self.pane)
 
     async def _wakeup_loop(self) -> None:
+        import json as _json
         waker = self._build_wakeup()
-        headers = {"Authorization": f"Bearer {self.token}", "Last-Event-ID": "0"}
+        # Track the last seen event id so a reconnect resumes from there instead
+        # of replaying (and re-poking) the whole history. A fresh session starts
+        # at 0 (empty inbox), so no spurious pokes on first connect either.
+        last_id = "0"
         while True:
             try:
+                headers = {"Authorization": f"Bearer {self.token}",
+                           "Last-Event-ID": last_id}
                 async with aconnect_sse(self.client, "GET", "/events",
                                         headers=headers) as es:
                     async for sse in es.aiter_sse():
+                        last_id = sse.id or last_id
                         if sse.event == "message.received":
-                            import json as _json
                             await waker.wake(_json.loads(sse.data))
             except asyncio.CancelledError:
                 raise
