@@ -7,3 +7,4 @@ venv/
 *.db-shm
 data/
 .env
+*.egg-info/

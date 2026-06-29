@@ -639,6 +639,18 @@ import pytest
 from courier.events import EventBus, Event
 
 
+@pytest.fixture(autouse=True)
+async def _seed_agents(db):
+    # events.agent_id REFERENCES agents(id) with foreign_keys=ON, so the agent
+    # rows these tests reference ("a1"/"a2") must exist before any bus.append.
+    for aid in ("a1", "a2"):
+        await db.execute(
+            "INSERT INTO agents(id,name,address,token_hash,created_at) "
+            "VALUES (?,?,?,?,?)",
+            (aid, aid.upper(), aid, "h-" + aid, "2026-01-01T00:00:00Z"),
+        )
+
+
 async def test_append_returns_monotonic_ids(db):
     bus = EventBus(db)
     e1 = await bus.append("a1", "message.received", {"x": 1})
@@ -782,7 +794,7 @@ class EventBus:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_events.py -v`
-Expected: 4 passed.
+Expected: 5 passed (incl. `test_stream_drops_already_replayed_live_event`, which mutation-kills the dedup guard).
 
 - [ ] **Step 5: Commit**
 
@@ -1283,18 +1295,32 @@ This task adds no new production code — it proves the SSE endpoint end-to-end 
 import asyncio
 import json
 import pytest
-from httpx import ASGITransport, AsyncClient
+import uvicorn
+from httpx import AsyncClient
 from httpx_sse import aconnect_sse
 from courier.api import create_app
 
 
 @pytest.fixture
 async def app_client(tmp_path):
+    # httpx ASGITransport buffers the whole response (awaits the ASGI app to
+    # completion before returning), so it can NEVER stream an unbounded SSE
+    # endpoint — the tests would hang. Run the app under a real in-process
+    # uvicorn server on an ephemeral port so the socket actually streams.
     app = create_app(str(tmp_path / "data"))
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://t") as c:
+    config = uvicorn.Config(app, host="127.0.0.1", port=0,
+                            log_level="warning", lifespan="on")
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    try:
+        while not server.started:
+            await asyncio.sleep(0.01)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as c:
             yield app, c
+    finally:
+        server.should_exit = True
+        await task
 
 
 async def _reg(c, name, addr):
@@ -1671,7 +1697,7 @@ def build_wakeup(kind: str, repo: str = "owner/repo"):
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_listener.py -v`
-Expected: 5 passed.
+Expected: 4 passed.
 
 - [ ] **Step 5: Implement `courier/listener/daemon.py`**
 
@@ -1679,6 +1705,7 @@ Expected: 5 passed.
 import argparse
 import asyncio
 import json
+import logging
 import os
 
 import httpx
@@ -1686,11 +1713,14 @@ from httpx_sse import aconnect_sse
 
 from courier.listener.wakeups import build_wakeup
 
+log = logging.getLogger("courier.listener")
+
 
 async def run_daemon(url: str, token: str, wakeup) -> None:
     headers = {"Authorization": f"Bearer {token}"}
     last_id = "0"
     async with httpx.AsyncClient(base_url=url, timeout=None) as client:
+        log.info("listener connected to %s", url)
         while True:
             try:
                 async with aconnect_sse(
@@ -1700,12 +1730,16 @@ async def run_daemon(url: str, token: str, wakeup) -> None:
                     async for sse in es.aiter_sse():
                         last_id = sse.id or last_id
                         if sse.event == "message.received":
-                            await wakeup.wake(json.loads(sse.data))
+                            data = json.loads(sse.data)
+                            log.info("📬 new mail from %s — %r; waking agent",
+                                     data.get("from"), data.get("subject"))
+                            await wakeup.wake(data)
             except (httpx.HTTPError, httpx.TransportError):
                 await asyncio.sleep(1)  # reconnect with backoff
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     p = argparse.ArgumentParser(description="Courier listener daemon")
     p.add_argument("--url", default=os.environ.get("COURIER_URL", "http://127.0.0.1:8765"))
     p.add_argument("--token", default=os.environ.get("COURIER_TOKEN"))
@@ -1726,7 +1760,7 @@ if __name__ == "__main__":
 - [ ] **Step 6: Run the listener tests again (daemon has no new unit test; verified in Task 11 demo)**
 
 Run: `pytest tests/test_listener.py -v`
-Expected: 5 passed.
+Expected: 4 passed.
 
 - [ ] **Step 7: Commit**
 
