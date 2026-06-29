@@ -22,6 +22,7 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `courier/listener/wakeups.py` — wakeup strategies: stub, copilot_cli, copilot_app, os_notify.
 - `courier/listener/daemon.py` — SSE client loop → wakeup dispatch (`run_daemon` + `main`).
 - `scripts/e2e_verify.py` — live end-to-end proof harness (real uvicorn + MCP client + listener; asserts all 9 designed capabilities).
+- `scripts/mcp_verify.py` — drives `courier.mcp_server` over real stdio MCP (handshake + tools/list + tool calls) the way Copilot does.
 - `tests/conftest.py` — `db` fixture (temp-db Database).
 - `tests/test_smoke.py` `test_db.py` `test_auth.py` `test_models.py` `test_agents.py` `test_events.py` `test_messages.py` `test_api.py` `test_sse.py` `test_mcp.py` `test_listener.py` — per-module test suites.
 
