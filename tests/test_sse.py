@@ -4,7 +4,7 @@ import pytest
 import uvicorn
 from httpx import AsyncClient
 from httpx_sse import aconnect_sse
-from courier.api import create_app
+from postbox.api import create_app
 
 
 @pytest.fixture

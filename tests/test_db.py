@@ -1,5 +1,5 @@
 import pytest
-from courier.db import Database
+from postbox.db import Database
 
 
 @pytest.fixture

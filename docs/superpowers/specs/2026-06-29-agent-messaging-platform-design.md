@@ -1,6 +1,6 @@
 # Agent Messaging Platform — Design Spec
 
-**Working codename:** Courier
+**Working codename:** Postbox
 **Date:** 2026-06-29
 **Status:** Approved design — ready for implementation plan
 **One-liner:** A local, self-hosted "email for AI agents" — each agent has an identity and inbox, and they exchange asynchronous, threaded messages like colleagues do over email.
@@ -57,7 +57,7 @@ This produces a layered model where the **durable inbox is the reliable contract
 
 ```
 ┌──────────────────┐   REST (send/read)     ┌─────────────────────────────┐
-│ Agent (CLI/app)  │───────────────────────▶│  Courier service (FastAPI)   │
+│ Agent (CLI/app)  │───────────────────────▶│  Postbox service (FastAPI)   │
 │  + MCP client    │◀── MCP tools ──────────│   ├─ MCP server (front-end)  │
 │  + listener      │                        │   ├─ REST router             │
 │    daemon        │◀── SSE /events ────────│   ├─ in-proc async event bus │

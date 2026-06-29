@@ -52,7 +52,7 @@ class OsNotifyWakeup:
 
     async def wake(self, event: dict) -> None:
         text = _notification_text(event)
-        script = f'display notification {shlex.quote(text)} with title "Courier"'
+        script = f'display notification {shlex.quote(text)} with title "Postbox"'
         await self._run(["osascript", "-e", script])
 
 

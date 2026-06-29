@@ -1,6 +1,6 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
-from courier.api import create_app
+from postbox.api import create_app
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-"""End-to-end verification of Courier against everything we designed.
+"""End-to-end verification of Postbox against everything we designed.
 
 Runs the REAL service (uvicorn), the REAL MCP MailTools client, and the REAL
 listener daemon over SSE — black-box over HTTP — and asserts each promised
@@ -12,10 +12,10 @@ import httpx
 import uvicorn
 from httpx_sse import aconnect_sse
 
-from courier.api import create_app
-from courier.mcp_server import MailTools
-from courier.listener.daemon import run_daemon
-from courier.listener.wakeups import StubWakeup
+from postbox.api import create_app
+from postbox.mcp_server import MailTools
+from postbox.listener.daemon import run_daemon
+from postbox.listener.wakeups import StubWakeup
 
 OK = "\033[92mPASS\033[0m"
 

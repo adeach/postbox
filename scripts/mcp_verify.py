@@ -1,8 +1,8 @@
-"""Verify the v2 MCP path the way Copilot actually uses it: launch courier.mcp_server
-as a real stdio MCP subprocess with ONLY COURIER_URL set (token-LESS config), do the
+"""Verify the v2 MCP path the way Copilot actually uses it: launch postbox.mcp_server
+as a real stdio MCP subprocess with ONLY POSTBOX_URL set (token-LESS config), do the
 MCP handshake, list tools, and confirm the server auto-registered its own identity.
 
-v2 changed the MCP surface: the server no longer reads COURIER_TOKEN — its lifespan
+v2 changed the MCP surface: the server no longer reads POSTBOX_TOKEN — its lifespan
 auto-registers a session identity (a `copilot-*` agent) on startup, exposes a `set_name`
 tool, and deregisters on shutdown. So we pass no token, ensure TMUX_PANE is absent
 (wakeup kind 'none'), and assert the new behaviour over real stdio MCP.
@@ -17,7 +17,7 @@ import uvicorn
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from courier.api import create_app
+from postbox.api import create_app
 
 OK = "\033[92mPASS\033[0m"
 
@@ -33,15 +33,15 @@ def _text(result):
 
 
 def mcp_params(url):
-    # Token-LESS v2 config: only COURIER_URL. Strip COURIER_TOKEN (ignored now) and
+    # Token-LESS v2 config: only POSTBOX_URL. Strip POSTBOX_TOKEN (ignored now) and
     # TMUX_PANE (so the auto-registered session uses wakeup kind 'none', not tmux —
     # otherwise a shell running inside tmux would leak its real pane in).
-    env = {**os.environ, "COURIER_URL": url}
-    env.pop("COURIER_TOKEN", None)
+    env = {**os.environ, "POSTBOX_URL": url}
+    env.pop("POSTBOX_TOKEN", None)
     env.pop("TMUX_PANE", None)
     return StdioServerParameters(
         command=sys.executable,
-        args=["-m", "courier.mcp_server"],
+        args=["-m", "postbox.mcp_server"],
         env=env,
     )
 
@@ -56,7 +56,7 @@ async def main():
     port = server.servers[0].sockets[0].getsockname()[1]
     url = f"http://127.0.0.1:{port}"
 
-    print("\nMCP v2 — a Copilot session connects to courier.mcp_server over stdio (no token)")
+    print("\nMCP v2 — a Copilot session connects to postbox.mcp_server over stdio (no token)")
     async with stdio_client(mcp_params(url)) as (r, w):
         async with ClientSession(r, w) as s:
             await s.initialize()

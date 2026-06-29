@@ -1,8 +1,8 @@
 import pytest
-from courier.agents import AgentService
-from courier.events import EventBus
-from courier.messages import MessageService
-from courier.models import RegisterAgent, SendMessage
+from postbox.agents import AgentService
+from postbox.events import EventBus
+from postbox.messages import MessageService
+from postbox.models import RegisterAgent, SendMessage
 
 
 @pytest.fixture

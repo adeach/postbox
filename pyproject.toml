@@ -1,5 +1,5 @@
 [project]
-name = "courier"
+name = "postbox"
 version = "0.1.0"
 description = "Local email-for-AI-agents messaging platform"
 requires-python = ">=3.11"

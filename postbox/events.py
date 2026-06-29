@@ -2,8 +2,8 @@ import asyncio
 import json
 from dataclasses import dataclass
 
-from courier.auth import now_iso
-from courier.db import Database
+from postbox.auth import now_iso
+from postbox.db import Database
 
 
 @dataclass

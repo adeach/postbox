@@ -3,12 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
-from courier.agents import AgentService
-from courier.db import Database
-from courier.events import EventBus
-from courier.config import load_settings
-from courier.messages import MessageService
-from courier.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
+from postbox.agents import AgentService
+from postbox.db import Database
+from postbox.events import EventBus
+from postbox.config import load_settings
+from postbox.messages import MessageService
+from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 import json
 
 
@@ -25,7 +25,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         yield
         await db.close()
 
-    app = FastAPI(title="Courier", lifespan=lifespan)
+    app = FastAPI(title="Postbox", lifespan=lifespan)
 
     async def current_agent(
         authorization: str = Header(default=""),

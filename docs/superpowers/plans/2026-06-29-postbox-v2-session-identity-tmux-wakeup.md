@@ -1,10 +1,10 @@
-# Courier v2 — Session Identity + Real-Time tmux Wakeup — Implementation Plan
+# Postbox v2 — Session Identity + Real-Time tmux Wakeup — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Make Courier identity per-session and self-assigned (token-less shared MCP config), and deliver messages to a recipient **in real time by injecting into its tmux pane** — so copilot1 → copilot2 lands instantly whether copilot2 is idle or busy, with no manual "check your inbox."
+**Goal:** Make Postbox identity per-session and self-assigned (token-less shared MCP config), and deliver messages to a recipient **in real time by injecting into its tmux pane** — so copilot1 → copilot2 lands instantly whether copilot2 is idle or busy, with no manual "check your inbox."
 
-**Architecture:** Each Copilot session spawns its own `courier.mcp_server` stdio process. That process (1) **auto-registers** an identity on startup, capturing its inherited `$TMUX_PANE` as its wakeup target, (2) runs a **background SSE loop** that, on `message.received`, does `tmux send-keys` into its own pane, and (3) **deregisters** on shutdown. The shared `mcp-config.json` carries only `COURIER_URL` — no token. Built on v1 (REST+SSE+SQLite+inbox+events), all of which is reused unchanged except the agent/identity surface.
+**Architecture:** Each Copilot session spawns its own `postbox.mcp_server` stdio process. That process (1) **auto-registers** an identity on startup, capturing its inherited `$TMUX_PANE` as its wakeup target, (2) runs a **background SSE loop** that, on `message.received`, does `tmux send-keys` into its own pane, and (3) **deregisters** on shutdown. The shared `mcp-config.json` carries only `COURIER_URL` — no token. Built on v1 (REST+SSE+SQLite+inbox+events), all of which is reused unchanged except the agent/identity surface.
 
 **Tech Stack:** Python/FastAPI/SQLite/aiosqlite/`mcp` SDK (`FastMCP` with verified `instructions=` + `lifespan=`)/httpx+httpx-sse/`tmux` binary at runtime.
 
@@ -18,13 +18,13 @@
 ## File Structure
 
 ```
-courier/schema.sql        MODIFY  add columns to agents (wakeup_kind, wakeup_target, status, last_seen)
-courier/db.py             MODIFY  additive migration for existing DBs (ALTER TABLE if column missing)
-courier/models.py         MODIFY  Wakeup model; RegisterAgent +wakeup/name-optional; AgentOut +status; SetName
-courier/agents.py         MODIFY  register stores wakeup+status; set_name; deregister; set_status; directory online-only
-courier/api.py            MODIFY  register accepts wakeup; PATCH/DELETE /agents/self; presence via SSE connect/disconnect
-courier/listener/wakeups.py MODIFY  add TmuxWakeup + build_wakeup('tmux', target=...)
-courier/mcp_server.py     MODIFY  v2: Session (auto-register + background SSE wakeup + deregister), lifespan, set_name tool, instructions
+postbox/schema.sql        MODIFY  add columns to agents (wakeup_kind, wakeup_target, status, last_seen)
+postbox/db.py             MODIFY  additive migration for existing DBs (ALTER TABLE if column missing)
+postbox/models.py         MODIFY  Wakeup model; RegisterAgent +wakeup/name-optional; AgentOut +status; SetName
+postbox/agents.py         MODIFY  register stores wakeup+status; set_name; deregister; set_status; directory online-only
+postbox/api.py            MODIFY  register accepts wakeup; PATCH/DELETE /agents/self; presence via SSE connect/disconnect
+postbox/listener/wakeups.py MODIFY  add TmuxWakeup + build_wakeup('tmux', target=...)
+postbox/mcp_server.py     MODIFY  v2: Session (auto-register + background SSE wakeup + deregister), lifespan, set_name tool, instructions
 README.md                 MODIFY  token-less shared config + two-pane tmux workflow
 CLAUDE.md                 MODIFY  index/status
 scripts/v2_tmux_e2e.py    CREATE  real-tmux end-to-end proof (capture-pane)
@@ -41,9 +41,9 @@ tests/test_mcp.py         MODIFY  v2 Session auto-register + wakeup-loop tests
 
 ## Task 1: Schema + additive migration
 
-**Files:** Modify `courier/schema.sql`, `courier/db.py`; Test `tests/test_db.py`
+**Files:** Modify `postbox/schema.sql`, `postbox/db.py`; Test `tests/test_db.py`
 
-- [ ] **Step 1: Add columns to `agents` in `courier/schema.sql`** (append the new columns to the CREATE TABLE; for a fresh DB they're created directly)
+- [ ] **Step 1: Add columns to `agents` in `postbox/schema.sql`** (append the new columns to the CREATE TABLE; for a fresh DB they're created directly)
 
 Change the `agents` table definition to:
 ```sql
@@ -75,7 +75,7 @@ async def test_agents_has_v2_columns(db):
 Run: `.venv/bin/pytest tests/test_db.py::test_agents_has_v2_columns -v`
 Expected: FAIL on a pre-existing DB without the columns (or PASS on a fresh temp DB). To make this robust for **existing** DBs, add the migration in Step 4.
 
-- [ ] **Step 4: Add an additive migration in `courier/db.py`** so existing `~/.courier/courier.db` files gain the columns. In `connect()`, after `executescript(SCHEMA)` and before `commit()`, add:
+- [ ] **Step 4: Add an additive migration in `postbox/db.py`** so existing `~/.postbox/postbox.db` files gain the columns. In `connect()`, after `executescript(SCHEMA)` and before `commit()`, add:
 
 ```python
         await self._migrate()
@@ -109,7 +109,7 @@ Expected: all pass (existing 3 + new 1 = 4).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add courier/schema.sql courier/db.py tests/test_db.py
+git add postbox/schema.sql postbox/db.py tests/test_db.py
 git commit -m "v2: add wakeup/status/last_seen columns to agents + additive migration"
 ```
 
@@ -117,13 +117,13 @@ git commit -m "v2: add wakeup/status/last_seen columns to agents + additive migr
 
 ## Task 2: Models v2
 
-**Files:** Modify `courier/models.py`; Test `tests/test_models.py`
+**Files:** Modify `postbox/models.py`; Test `tests/test_models.py`
 
 - [ ] **Step 1: Write failing tests in `tests/test_models.py`** (append)
 
 ```python
 def test_wakeup_model_and_register_defaults():
-    from courier.models import RegisterAgent, Wakeup
+    from postbox.models import RegisterAgent, Wakeup
     m = RegisterAgent(wakeup=Wakeup(kind="tmux", target="%5"))
     assert m.name is None                 # name optional in v2 (server defaults it)
     assert m.wakeup.kind == "tmux" and m.wakeup.target == "%5"
@@ -132,7 +132,7 @@ def test_wakeup_model_and_register_defaults():
 
 
 def test_set_name_model():
-    from courier.models import SetName
+    from postbox.models import SetName
     assert SetName(name="alice").name == "alice"
 ```
 
@@ -141,7 +141,7 @@ def test_set_name_model():
 Run: `.venv/bin/pytest tests/test_models.py -v`
 Expected: FAIL — `Wakeup`/`SetName` undefined, `RegisterAgent.name` currently required.
 
-- [ ] **Step 3: Implement in `courier/models.py`**
+- [ ] **Step 3: Implement in `postbox/models.py`**
 
 Add near the top (after imports):
 ```python
@@ -183,7 +183,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/models.py tests/test_models.py
+git add postbox/models.py tests/test_models.py
 git commit -m "v2: Wakeup model, optional name on register, status on AgentOut, SetName"
 ```
 
@@ -191,18 +191,18 @@ git commit -m "v2: Wakeup model, optional name on register, status on AgentOut, 
 
 ## Task 3: Agent service v2 (register+wakeup, set_name, deregister, presence, online directory)
 
-**Files:** Modify `courier/agents.py`; Test `tests/test_agents.py`
+**Files:** Modify `postbox/agents.py`; Test `tests/test_agents.py`
 
 - [ ] **Step 1: Write failing tests in `tests/test_agents.py`** (append)
 
 ```python
 import pytest
-from courier.models import Wakeup
+from postbox.models import Wakeup
 
 
 async def test_register_defaults_name_and_stores_wakeup(db):
-    from courier.agents import AgentService
-    from courier.models import RegisterAgent
+    from postbox.agents import AgentService
+    from postbox.models import RegisterAgent
     svc = AgentService(db)
     res = await svc.register(RegisterAgent(wakeup=Wakeup(kind="tmux", target="%9")))
     assert res.address.startswith("copilot-")      # defaulted handle
@@ -212,8 +212,8 @@ async def test_register_defaults_name_and_stores_wakeup(db):
 
 
 async def test_set_name_changes_handle_and_rejects_duplicate(db):
-    from courier.agents import AgentService
-    from courier.models import RegisterAgent
+    from postbox.agents import AgentService
+    from postbox.models import RegisterAgent
     svc = AgentService(db)
     a = await svc.register(RegisterAgent())
     b = await svc.register(RegisterAgent())
@@ -225,8 +225,8 @@ async def test_set_name_changes_handle_and_rejects_duplicate(db):
 
 
 async def test_deregister_and_online_directory(db):
-    from courier.agents import AgentService
-    from courier.models import RegisterAgent
+    from postbox.agents import AgentService
+    from postbox.models import RegisterAgent
     svc = AgentService(db)
     a = await svc.register(RegisterAgent())
     b = await svc.register(RegisterAgent())
@@ -243,7 +243,7 @@ async def test_deregister_and_online_directory(db):
 Run: `.venv/bin/pytest tests/test_agents.py -v`
 Expected: FAIL — `set_name`/`deregister`/`set_status` undefined; register doesn't accept wakeup/default name.
 
-- [ ] **Step 3: Implement in `courier/agents.py`**
+- [ ] **Step 3: Implement in `postbox/agents.py`**
 
 Replace the `register` method and add the new methods. New `register`:
 ```python
@@ -327,7 +327,7 @@ Expected: all pass (existing + 3 new).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/agents.py tests/test_agents.py
+git add postbox/agents.py tests/test_agents.py
 git commit -m "v2: agent service — default handle, wakeup storage, set_name, presence, online directory"
 ```
 
@@ -335,7 +335,7 @@ git commit -m "v2: agent service — default handle, wakeup storage, set_name, p
 
 ## Task 4: API v2 (wakeup on register, set_name, deregister, SSE presence)
 
-**Files:** Modify `courier/api.py`; Test `tests/test_api.py`
+**Files:** Modify `postbox/api.py`; Test `tests/test_api.py`
 
 - [ ] **Step 1: Write failing tests in `tests/test_api.py`** (append; reuse the existing `client` fixture)
 
@@ -373,11 +373,11 @@ async def test_deregister_self(client):
 Run: `.venv/bin/pytest tests/test_api.py -v`
 Expected: FAIL — PATCH/DELETE routes missing.
 
-- [ ] **Step 3: Implement in `courier/api.py`**
+- [ ] **Step 3: Implement in `postbox/api.py`**
 
 Add `SetName` to the models import:
 ```python
-from courier.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
+from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 ```
 
 Add routes after the existing `/agents` routes:
@@ -425,7 +425,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/api.py tests/test_api.py
+git add postbox/api.py tests/test_api.py
 git commit -m "v2: API — register wakeup, PATCH/DELETE /agents/self, SSE presence"
 ```
 
@@ -433,13 +433,13 @@ git commit -m "v2: API — register wakeup, PATCH/DELETE /agents/self, SSE prese
 
 ## Task 5: TmuxWakeup strategy
 
-**Files:** Modify `courier/listener/wakeups.py`; Test `tests/test_listener.py`
+**Files:** Modify `postbox/listener/wakeups.py`; Test `tests/test_listener.py`
 
 - [ ] **Step 1: Write failing tests in `tests/test_listener.py`** (append)
 
 ```python
 async def test_tmux_wakeup_sends_literal_then_enter():
-    from courier.listener.wakeups import TmuxWakeup
+    from postbox.listener.wakeups import TmuxWakeup
     cmds = []
     async def fake_run(cmd): cmds.append(cmd)
     w = TmuxWakeup(pane="%7", runner=fake_run)
@@ -451,7 +451,7 @@ async def test_tmux_wakeup_sends_literal_then_enter():
 
 
 def test_build_wakeup_tmux():
-    from courier.listener.wakeups import build_wakeup
+    from postbox.listener.wakeups import build_wakeup
     w = build_wakeup("tmux", target="%2")
     assert w.__class__.__name__ == "TmuxWakeup" and w.pane == "%2"
 ```
@@ -461,7 +461,7 @@ def test_build_wakeup_tmux():
 Run: `.venv/bin/pytest tests/test_listener.py -v`
 Expected: FAIL — `TmuxWakeup` undefined; `build_wakeup` doesn't know `tmux`.
 
-- [ ] **Step 3: Implement in `courier/listener/wakeups.py`**
+- [ ] **Step 3: Implement in `postbox/listener/wakeups.py`**
 
 Add the class (reuse the existing `_notification_text` and `_default_runner`):
 ```python
@@ -511,8 +511,8 @@ import asyncio
 
 @pytest.mark.skipif(shutil.which("tmux") is None, reason="tmux not installed")
 async def test_tmux_wakeup_real_pane_receives_text(tmp_path):
-    from courier.listener.wakeups import TmuxWakeup
-    session = "courier_test_pane"
+    from postbox.listener.wakeups import TmuxWakeup
+    session = "postbox_test_pane"
     outfile = tmp_path / "out.txt"
     # a pane that writes whatever it reads on stdin into outfile
     await (await asyncio.create_subprocess_exec(
@@ -544,7 +544,7 @@ Expected: all pass (the real-tmux test runs here since tmux is installed).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add courier/listener/wakeups.py tests/test_listener.py
+git add postbox/listener/wakeups.py tests/test_listener.py
 git commit -m "v2: TmuxWakeup strategy (send-keys -l + Enter) with real-tmux test"
 ```
 
@@ -552,7 +552,7 @@ git commit -m "v2: TmuxWakeup strategy (send-keys -l + Enter) with real-tmux tes
 
 ## Task 6: MCP server v2 — auto-register + background wakeup + deregister
 
-**Files:** Modify `courier/mcp_server.py`; Test `tests/test_mcp.py`
+**Files:** Modify `postbox/mcp_server.py`; Test `tests/test_mcp.py`
 
 This is the integration centerpiece. `MailTools` (from v1) is reused for the REST calls. We add a `Session` that owns the lifecycle, and rebuild `build_server` with a `lifespan` + `instructions` + `set_name` tool.
 
@@ -562,8 +562,8 @@ This is the integration centerpiece. `MailTools` (from v1) is reused for the RES
 import asyncio
 import uvicorn
 from httpx import AsyncClient
-from courier.api import create_app
-from courier.mcp_server import Session
+from postbox.api import create_app
+from postbox.mcp_server import Session
 
 
 async def test_session_autoregisters_with_pane_and_wakes(tmp_path):
@@ -617,7 +617,7 @@ async def test_session_autoregisters_with_pane_and_wakes(tmp_path):
 Run: `.venv/bin/pytest tests/test_mcp.py -v`
 Expected: FAIL — `Session` undefined.
 
-- [ ] **Step 3: Implement `Session` and v2 `build_server` in `courier/mcp_server.py`**
+- [ ] **Step 3: Implement `Session` and v2 `build_server` in `postbox/mcp_server.py`**
 
 Keep the existing `MailTools` class. Add imports at top:
 ```python
@@ -627,13 +627,13 @@ from contextlib import asynccontextmanager
 
 from httpx_sse import aconnect_sse
 
-from courier.listener.wakeups import build_wakeup
+from postbox.listener.wakeups import build_wakeup
 ```
 
 Add the `Session` class:
 ```python
 INSTRUCTIONS = (
-    "You have a Courier mailbox for talking to other agents. "
+    "You have a Postbox mailbox for talking to other agents. "
     "When you see a line starting with '📬 New mail', immediately call check_inbox, "
     "then read_message and act on or reply to it. If unsure whether you have mail, "
     "call check_inbox at the start of your turn. Use set_name to pick your display name."
@@ -667,7 +667,7 @@ class Session:
     def _build_wakeup(self):
         if not self.pane:
             return build_wakeup("stub")
-        from courier.listener.wakeups import TmuxWakeup
+        from postbox.listener.wakeups import TmuxWakeup
         if self._runner:
             return TmuxWakeup(pane=self.pane, runner=self._runner)
         return TmuxWakeup(pane=self.pane)
@@ -735,7 +735,7 @@ def build_server():
             await session.stop()
             await client.aclose()
 
-    mcp = FastMCP("courier-mail", instructions=INSTRUCTIONS, lifespan=lifespan)
+    mcp = FastMCP("postbox-mail", instructions=INSTRUCTIONS, lifespan=lifespan)
 
     @mcp.tool()
     async def list_agents() -> list[dict]:
@@ -776,7 +776,7 @@ if __name__ == "__main__":
     build_server().run()
 ```
 
-> **Implementer caution:** FastMCP `lifespan`/`instructions` are confirmed present (verified). Run `.venv/bin/python -c "import courier.mcp_server"` after editing. If the `lifespan` yield-shape differs in this SDK version, STOP and report the exact error rather than guessing (this is exactly how the v1 FK/SSE bugs were caught). Do not change the REST layer to work around it.
+> **Implementer caution:** FastMCP `lifespan`/`instructions` are confirmed present (verified). Run `.venv/bin/python -c "import postbox.mcp_server"` after editing. If the `lifespan` yield-shape differs in this SDK version, STOP and report the exact error rather than guessing (this is exactly how the v1 FK/SSE bugs were caught). Do not change the REST layer to work around it.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -786,7 +786,7 @@ Expected: all pass (existing 3 + new 1). The new test uses a real uvicorn socket
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/mcp_server.py tests/test_mcp.py
+git add postbox/mcp_server.py tests/test_mcp.py
 git commit -m "v2: MCP server self-registers, runs background tmux wakeup loop, deregisters"
 ```
 
@@ -802,10 +802,10 @@ git commit -m "v2: MCP server self-registers, runs background tmux wakeup loop, 
 ## Wire up MCP (one shared, token-LESS config for every agent)
 `~/.copilot/mcp-config.json` — identical for all instances; **no token**:
 ```json
-{ "mcpServers": { "courier": {
+{ "mcpServers": { "postbox": {
   "type": "local",
   "command": "/Users/adachary/workspace/personal/messaging/.venv/bin/python",
-  "args": ["-m", "courier.mcp_server"],
+  "args": ["-m", "postbox.mcp_server"],
   "env": { "COURIER_URL": "http://127.0.0.1:8765" }
 }}}
 ```
@@ -817,7 +817,7 @@ captures its `$TMUX_PANE` for real-time wakeups. Run Copilot **inside tmux** so 
 tmux new -s a 'copilot'      # tab/pane A
 tmux new -s b 'copilot'      # tab/pane B
 ```
-In A: "set your courier name to alice, then send a message to bob: 'review PR #42?'"
+In A: "set your postbox name to alice, then send a message to bob: 'review PR #42?'"
 In B (idle): its pane is poked automatically — "📬 New mail from alice …" — and it
 reads + replies with no prompting from you.
 ````
@@ -849,8 +849,8 @@ import tempfile
 import httpx
 import uvicorn
 
-from courier.api import create_app
-from courier.mcp_server import Session
+from postbox.api import create_app
+from postbox.mcp_server import Session
 
 OK = "\033[92mPASS\033[0m"
 
@@ -865,7 +865,7 @@ async def main():
     port = server.servers[0].sockets[0].getsockname()[1]
     base = f"http://127.0.0.1:{port}"
 
-    sess_name = "courier_v2_e2e"
+    sess_name = "postbox_v2_e2e"
     outfile = os.path.join(tempfile.mkdtemp(), "pane.txt")
     await (await asyncio.create_subprocess_exec(
         "tmux", "new-session", "-d", "-s", sess_name, f"cat > {outfile}")).wait()
