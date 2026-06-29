@@ -1,5 +1,5 @@
 import pytest
-from courier.listener.wakeups import StubWakeup, build_wakeup
+from postbox.listener.wakeups import StubWakeup, build_wakeup
 
 
 async def test_stub_wakeup_records_events():
@@ -17,7 +17,7 @@ def test_build_wakeup_selects_strategy():
 
 
 async def test_copilot_cli_builds_command(monkeypatch):
-    from courier.listener.wakeups import CopilotCliWakeup
+    from postbox.listener.wakeups import CopilotCliWakeup
     captured = {}
 
     async def fake_run(cmd):
@@ -31,7 +31,7 @@ async def test_copilot_cli_builds_command(monkeypatch):
 
 
 async def test_copilot_app_builds_deeplink(monkeypatch):
-    from courier.listener.wakeups import CopilotAppWakeup
+    from postbox.listener.wakeups import CopilotAppWakeup
     captured = {}
 
     async def fake_run(cmd):
@@ -46,7 +46,7 @@ async def test_copilot_app_builds_deeplink(monkeypatch):
 
 
 async def test_tmux_wakeup_sends_literal_then_enter():
-    from courier.listener.wakeups import TmuxWakeup
+    from postbox.listener.wakeups import TmuxWakeup
     cmds = []
     async def fake_run(cmd): cmds.append(cmd)
     w = TmuxWakeup(pane="%7", runner=fake_run)
@@ -58,7 +58,7 @@ async def test_tmux_wakeup_sends_literal_then_enter():
 
 
 def test_build_wakeup_tmux():
-    from courier.listener.wakeups import build_wakeup
+    from postbox.listener.wakeups import build_wakeup
     w = build_wakeup("tmux", target="%2")
     assert w.__class__.__name__ == "TmuxWakeup" and w.pane == "%2"
 
@@ -69,8 +69,8 @@ import asyncio
 
 @pytest.mark.skipif(shutil.which("tmux") is None, reason="tmux not installed")
 async def test_tmux_wakeup_real_pane_receives_text(tmp_path):
-    from courier.listener.wakeups import TmuxWakeup
-    session = "courier_test_pane"
+    from postbox.listener.wakeups import TmuxWakeup
+    session = "postbox_test_pane"
     outfile = tmp_path / "out.txt"
     # a pane that writes whatever it reads on stdin into outfile
     await (await asyncio.create_subprocess_exec(

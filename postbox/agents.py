@@ -1,8 +1,8 @@
 import json
 
-from courier.auth import generate_token, hash_token, new_id, now_iso
-from courier.db import Database
-from courier.models import AgentOut, RegisterAgent, RegisterResult
+from postbox.auth import generate_token, hash_token, new_id, now_iso
+from postbox.db import Database
+from postbox.models import AgentOut, RegisterAgent, RegisterResult
 
 
 class AgentService:

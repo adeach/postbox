@@ -1,7 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
-from courier.api import create_app
-from courier.mcp_server import MailTools
+from postbox.api import create_app
+from postbox.mcp_server import MailTools
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ async def test_reply_threads_and_routes_back(tools):
 
 import asyncio
 import uvicorn
-from courier.mcp_server import Session
+from postbox.mcp_server import Session
 
 
 async def test_session_autoregisters_with_pane_and_wakes(tmp_path):

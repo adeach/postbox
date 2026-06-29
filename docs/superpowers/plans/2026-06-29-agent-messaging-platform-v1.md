@@ -1,8 +1,8 @@
-# Agent Messaging Platform (Courier) — v1 Implementation Plan
+# Agent Messaging Platform (Postbox) — v1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the v1 vertical slice of Courier — a local "email for AI agents": register agents, send threaded messages to a single recipient, durable inbox, read messages, SSE event stream with replay, an MCP server front-end, and a listener daemon that wakes Copilot CLI / the Copilot app on new mail.
+**Goal:** Build the v1 vertical slice of Postbox — a local "email for AI agents": register agents, send threaded messages to a single recipient, durable inbox, read messages, SSE event stream with replay, an MCP server front-end, and a listener daemon that wakes Copilot CLI / the Copilot app on new mail.
 
 **Architecture:** A single FastAPI process backed by SQLite (WAL) is the source of truth. State changes write to SQLite and append to a monotonic `events` log, then publish to an in-process asyncio bus. Clients read mail over REST (the reliable path) and receive live notifications over SSE (best-effort). The MCP server is a thin stdio process that calls the REST API on behalf of one agent; the listener daemon holds the SSE stream and triggers a runtime wakeup on `message.received`.
 
@@ -15,7 +15,7 @@
 ```
 pyproject.toml                  # project metadata + deps
 README.md                       # run/demo instructions
-courier/
+postbox/
   __init__.py
   config.py                     # Settings: data dir, db path, host/port
   db.py                         # aiosqlite connection (WAL), schema init, write helper
@@ -56,8 +56,8 @@ tests/
 
 **Files:**
 - Create: `pyproject.toml`
-- Create: `courier/__init__.py` (empty)
-- Create: `courier/config.py`
+- Create: `postbox/__init__.py` (empty)
+- Create: `postbox/config.py`
 - Create: `tests/conftest.py` (minimal, expanded later)
 - Test: `tests/test_smoke.py`
 
@@ -65,7 +65,7 @@ tests/
 
 ```toml
 [project]
-name = "courier"
+name = "postbox"
 version = "0.1.0"
 description = "Local email-for-AI-agents messaging platform"
 requires-python = ">=3.11"
@@ -87,7 +87,7 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "anyio>=4.0"]
 asyncio_mode = "auto"
 ```
 
-- [ ] **Step 2: Create `courier/config.py`**
+- [ ] **Step 2: Create `postbox/config.py`**
 
 ```python
 import os
@@ -104,20 +104,20 @@ class Settings:
 
 
 def load_settings(data_dir: str | None = None) -> Settings:
-    base = Path(data_dir or os.environ.get("COURIER_DATA_DIR", "~/.courier")).expanduser()
+    base = Path(data_dir or os.environ.get("COURIER_DATA_DIR", "~/.postbox")).expanduser()
     base.mkdir(parents=True, exist_ok=True)
-    return Settings(data_dir=base, db_path=base / "courier.db")
+    return Settings(data_dir=base, db_path=base / "postbox.db")
 ```
 
-- [ ] **Step 3: Create `courier/__init__.py` (empty) and write the smoke test `tests/test_smoke.py`**
+- [ ] **Step 3: Create `postbox/__init__.py` (empty) and write the smoke test `tests/test_smoke.py`**
 
 ```python
 def test_settings_creates_data_dir(tmp_path):
-    from courier.config import load_settings
+    from postbox.config import load_settings
 
     s = load_settings(str(tmp_path / "data"))
     assert s.data_dir.exists()
-    assert s.db_path.name == "courier.db"
+    assert s.db_path.name == "postbox.db"
 ```
 
 - [ ] **Step 4: Install deps and run the smoke test (expect PASS)**
@@ -128,8 +128,8 @@ Expected: 1 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml courier/__init__.py courier/config.py tests/test_smoke.py
-git commit -m "scaffold courier project: config + smoke test"
+git add pyproject.toml postbox/__init__.py postbox/config.py tests/test_smoke.py
+git commit -m "scaffold postbox project: config + smoke test"
 ```
 
 ---
@@ -137,11 +137,11 @@ git commit -m "scaffold courier project: config + smoke test"
 ## Task 1: Database layer + schema
 
 **Files:**
-- Create: `courier/schema.sql`
-- Create: `courier/db.py`
+- Create: `postbox/schema.sql`
+- Create: `postbox/db.py`
 - Test: `tests/test_db.py`
 
-- [ ] **Step 1: Create `courier/schema.sql`**
+- [ ] **Step 1: Create `postbox/schema.sql`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS agents (
@@ -201,7 +201,7 @@ CREATE INDEX IF NOT EXISTS ix_events_agent_id ON events(agent_id, id);
 
 ```python
 import pytest
-from courier.db import Database
+from postbox.db import Database
 
 
 @pytest.fixture
@@ -237,9 +237,9 @@ async def test_execute_and_fetch(db):
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/test_db.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.db`.
+Expected: FAIL — `ModuleNotFoundError: postbox.db`.
 
-- [ ] **Step 4: Implement `courier/db.py`**
+- [ ] **Step 4: Implement `postbox/db.py`**
 
 ```python
 import asyncio
@@ -302,7 +302,7 @@ Expected: 3 passed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add courier/schema.sql courier/db.py tests/test_db.py
+git add postbox/schema.sql postbox/db.py tests/test_db.py
 git commit -m "add sqlite database layer (WAL) + schema"
 ```
 
@@ -311,13 +311,13 @@ git commit -m "add sqlite database layer (WAL) + schema"
 ## Task 2: IDs, time, and auth helpers
 
 **Files:**
-- Create: `courier/auth.py`
+- Create: `postbox/auth.py`
 - Test: `tests/test_auth.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_auth.py`**
 
 ```python
-from courier.auth import new_id, now_iso, generate_token, hash_token
+from postbox.auth import new_id, now_iso, generate_token, hash_token
 
 
 def test_new_id_unique():
@@ -339,9 +339,9 @@ def test_token_hash_is_stable_and_matches():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_auth.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.auth`.
+Expected: FAIL — `ModuleNotFoundError: postbox.auth`.
 
-- [ ] **Step 3: Implement `courier/auth.py`**
+- [ ] **Step 3: Implement `postbox/auth.py`**
 
 ```python
 import hashlib
@@ -374,7 +374,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/auth.py tests/test_auth.py
+git add postbox/auth.py tests/test_auth.py
 git commit -m "add id/time/token helpers"
 ```
 
@@ -383,7 +383,7 @@ git commit -m "add id/time/token helpers"
 ## Task 3: Models
 
 **Files:**
-- Create: `courier/models.py`
+- Create: `postbox/models.py`
 - Test: `tests/test_models.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_models.py`**
@@ -391,7 +391,7 @@ git commit -m "add id/time/token helpers"
 ```python
 import pytest
 from pydantic import ValidationError
-from courier.models import RegisterAgent, SendMessage
+from postbox.models import RegisterAgent, SendMessage
 
 
 def test_register_requires_name_and_address():
@@ -411,9 +411,9 @@ def test_send_message_defaults():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_models.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.models`.
+Expected: FAIL — `ModuleNotFoundError: postbox.models`.
 
-- [ ] **Step 3: Implement `courier/models.py`**
+- [ ] **Step 3: Implement `postbox/models.py`**
 
 ```python
 from pydantic import BaseModel, Field
@@ -465,7 +465,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/models.py tests/test_models.py
+git add postbox/models.py tests/test_models.py
 git commit -m "add pydantic models"
 ```
 
@@ -474,7 +474,7 @@ git commit -m "add pydantic models"
 ## Task 4: Agent service (register + directory + token lookup)
 
 **Files:**
-- Create: `courier/agents.py`
+- Create: `postbox/agents.py`
 - Test: `tests/test_agents.py`
 - Create: `tests/conftest.py`
 
@@ -482,12 +482,12 @@ git commit -m "add pydantic models"
 
 ```python
 import pytest
-from courier.db import Database
+from postbox.db import Database
 
 
 @pytest.fixture
 async def db(tmp_path):
-    d = Database(tmp_path / "courier.db")
+    d = Database(tmp_path / "postbox.db")
     await d.connect()
     yield d
     await d.close()
@@ -497,8 +497,8 @@ async def db(tmp_path):
 
 ```python
 import pytest
-from courier.agents import AgentService
-from courier.models import RegisterAgent
+from postbox.agents import AgentService
+from postbox.models import RegisterAgent
 
 
 async def test_register_returns_token_and_lists_in_directory(db):
@@ -531,16 +531,16 @@ async def test_resolve_token(db):
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/test_agents.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.agents`.
+Expected: FAIL — `ModuleNotFoundError: postbox.agents`.
 
-- [ ] **Step 4: Implement `courier/agents.py`**
+- [ ] **Step 4: Implement `postbox/agents.py`**
 
 ```python
 import json
 
-from courier.auth import generate_token, hash_token, new_id, now_iso
-from courier.db import Database
-from courier.models import AgentOut, RegisterAgent, RegisterResult
+from postbox.auth import generate_token, hash_token, new_id, now_iso
+from postbox.db import Database
+from postbox.models import AgentOut, RegisterAgent, RegisterResult
 
 
 class AgentService:
@@ -617,7 +617,7 @@ Expected: 3 passed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add courier/agents.py tests/conftest.py tests/test_agents.py
+git add postbox/agents.py tests/conftest.py tests/test_agents.py
 git commit -m "add agent service: register, directory, token lookup"
 ```
 
@@ -628,7 +628,7 @@ git commit -m "add agent service: register, directory, token lookup"
 This is the correctness-critical module (spec §8.1). Implement and test ordering/dedup carefully.
 
 **Files:**
-- Create: `courier/events.py`
+- Create: `postbox/events.py`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_events.py`**
@@ -636,7 +636,7 @@ This is the correctness-critical module (spec §8.1). Implement and test orderin
 ```python
 import asyncio
 import pytest
-from courier.events import EventBus, Event
+from postbox.events import EventBus, Event
 
 
 @pytest.fixture(autouse=True)
@@ -703,17 +703,17 @@ async def test_stream_replays_then_lives_without_dup(db):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_events.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.events`.
+Expected: FAIL — `ModuleNotFoundError: postbox.events`.
 
-- [ ] **Step 3: Implement `courier/events.py`**
+- [ ] **Step 3: Implement `postbox/events.py`**
 
 ```python
 import asyncio
 import json
 from dataclasses import dataclass
 
-from courier.auth import now_iso
-from courier.db import Database
+from postbox.auth import now_iso
+from postbox.db import Database
 
 
 @dataclass
@@ -799,7 +799,7 @@ Expected: 5 passed (incl. `test_stream_drops_already_replayed_live_event`, which
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/events.py tests/test_events.py
+git add postbox/events.py tests/test_events.py
 git commit -m "add event log + in-process bus with race-free SSE replay handoff"
 ```
 
@@ -808,17 +808,17 @@ git commit -m "add event log + in-process bus with race-free SSE replay handoff"
 ## Task 6: Message service (send, inbox, read, thread)
 
 **Files:**
-- Create: `courier/messages.py`
+- Create: `postbox/messages.py`
 - Test: `tests/test_messages.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_messages.py`**
 
 ```python
 import pytest
-from courier.agents import AgentService
-from courier.events import EventBus
-from courier.messages import MessageService
-from courier.models import RegisterAgent, SendMessage
+from postbox.agents import AgentService
+from postbox.events import EventBus
+from postbox.messages import MessageService
+from postbox.models import RegisterAgent, SendMessage
 
 
 @pytest.fixture
@@ -901,16 +901,16 @@ async def test_unread_filter(services):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_messages.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.messages`.
+Expected: FAIL — `ModuleNotFoundError: postbox.messages`.
 
-- [ ] **Step 3: Implement `courier/messages.py`**
+- [ ] **Step 3: Implement `postbox/messages.py`**
 
 ```python
-from courier.agents import AgentService
-from courier.auth import new_id, now_iso
-from courier.db import Database
-from courier.events import EventBus
-from courier.models import MessageOut, SendMessage
+from postbox.agents import AgentService
+from postbox.auth import new_id, now_iso
+from postbox.db import Database
+from postbox.events import EventBus
+from postbox.models import MessageOut, SendMessage
 
 
 class MessageService:
@@ -1063,7 +1063,7 @@ Expected: 8 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/messages.py tests/test_messages.py
+git add postbox/messages.py tests/test_messages.py
 git commit -m "add message service: send/inbox/read/thread with events + idempotency"
 ```
 
@@ -1072,8 +1072,8 @@ git commit -m "add message service: send/inbox/read/thread with events + idempot
 ## Task 7: FastAPI app — REST routes + auth dependency
 
 **Files:**
-- Create: `courier/api.py`
-- Create: `courier/main.py`
+- Create: `postbox/api.py`
+- Create: `postbox/main.py`
 - Test: `tests/test_api.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_api.py`**
@@ -1081,7 +1081,7 @@ git commit -m "add message service: send/inbox/read/thread with events + idempot
 ```python
 import pytest
 from httpx import ASGITransport, AsyncClient
-from courier.api import create_app
+from postbox.api import create_app
 
 
 @pytest.fixture
@@ -1154,9 +1154,9 @@ async def test_read_permissions(client):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_api.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.api`.
+Expected: FAIL — `ModuleNotFoundError: postbox.api`.
 
-- [ ] **Step 3: Implement `courier/api.py`**
+- [ ] **Step 3: Implement `postbox/api.py`**
 
 ```python
 from contextlib import asynccontextmanager
@@ -1164,12 +1164,12 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
-from courier.agents import AgentService
-from courier.db import Database
-from courier.events import EventBus
-from courier.config import load_settings
-from courier.messages import MessageService
-from courier.models import AgentOut, RegisterAgent, RegisterResult, SendMessage
+from postbox.agents import AgentService
+from postbox.db import Database
+from postbox.events import EventBus
+from postbox.config import load_settings
+from postbox.messages import MessageService
+from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage
 import json
 
 
@@ -1186,7 +1186,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         yield
         await db.close()
 
-    app = FastAPI(title="Courier", lifespan=lifespan)
+    app = FastAPI(title="Postbox", lifespan=lifespan)
 
     async def current_agent(
         authorization: str = Header(default=""),
@@ -1253,13 +1253,13 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     return app
 ```
 
-- [ ] **Step 4: Implement `courier/main.py`**
+- [ ] **Step 4: Implement `postbox/main.py`**
 
 ```python
 import uvicorn
 
-from courier.api import create_app
-from courier.config import load_settings
+from postbox.api import create_app
+from postbox.config import load_settings
 
 app = create_app()
 
@@ -1276,7 +1276,7 @@ Expected: 4 passed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add courier/api.py courier/main.py tests/test_api.py
+git add postbox/api.py postbox/main.py tests/test_api.py
 git commit -m "add FastAPI app: REST routes, bearer auth, SSE endpoint"
 ```
 
@@ -1298,7 +1298,7 @@ import pytest
 import uvicorn
 from httpx import AsyncClient
 from httpx_sse import aconnect_sse
-from courier.api import create_app
+from postbox.api import create_app
 
 
 @pytest.fixture
@@ -1394,7 +1394,7 @@ git commit -m "test SSE end-to-end: live delivery + reconnect replay"
 The MCP server runs as a separate stdio process launched by each agent runtime. It reads `COURIER_URL` and `COURIER_TOKEN` from the environment and calls the REST API. It does **not** import the service modules.
 
 **Files:**
-- Create: `courier/mcp_server.py`
+- Create: `postbox/mcp_server.py`
 - Test: `tests/test_mcp.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_mcp.py`**
@@ -1404,8 +1404,8 @@ The tools are thin wrappers; test the wrapper functions directly against a runni
 ```python
 import pytest
 from httpx import ASGITransport, AsyncClient
-from courier.api import create_app
-from courier.mcp_server import MailTools
+from postbox.api import create_app
+from postbox.mcp_server import MailTools
 
 
 @pytest.fixture
@@ -1444,9 +1444,9 @@ async def test_reply_threads_and_routes_back(tools):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_mcp.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.mcp_server`.
+Expected: FAIL — `ModuleNotFoundError: postbox.mcp_server`.
 
-- [ ] **Step 3: Implement `courier/mcp_server.py`**
+- [ ] **Step 3: Implement `postbox/mcp_server.py`**
 
 ```python
 import os
@@ -1506,7 +1506,7 @@ def build_server() -> FastMCP:
     client = httpx.AsyncClient(base_url=url)
     tools = MailTools(client, token)
 
-    mcp = FastMCP("courier-mail")
+    mcp = FastMCP("postbox-mail")
 
     @mcp.tool()
     async def list_agents() -> list[dict]:
@@ -1552,7 +1552,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add courier/mcp_server.py tests/test_mcp.py
+git add postbox/mcp_server.py tests/test_mcp.py
 git commit -m "add MCP server exposing mail tools over REST"
 ```
 
@@ -1561,16 +1561,16 @@ git commit -m "add MCP server exposing mail tools over REST"
 ## Task 10: Listener daemon + wakeup strategies
 
 **Files:**
-- Create: `courier/listener/__init__.py` (empty)
-- Create: `courier/listener/wakeups.py`
-- Create: `courier/listener/daemon.py`
+- Create: `postbox/listener/__init__.py` (empty)
+- Create: `postbox/listener/wakeups.py`
+- Create: `postbox/listener/daemon.py`
 - Test: `tests/test_listener.py`
 
 - [ ] **Step 1: Write the failing test `tests/test_listener.py`**
 
 ```python
 import pytest
-from courier.listener.wakeups import StubWakeup, build_wakeup
+from postbox.listener.wakeups import StubWakeup, build_wakeup
 
 
 async def test_stub_wakeup_records_events():
@@ -1588,7 +1588,7 @@ def test_build_wakeup_selects_strategy():
 
 
 async def test_copilot_cli_builds_command(monkeypatch):
-    from courier.listener.wakeups import CopilotCliWakeup
+    from postbox.listener.wakeups import CopilotCliWakeup
     captured = {}
 
     async def fake_run(cmd):
@@ -1602,7 +1602,7 @@ async def test_copilot_cli_builds_command(monkeypatch):
 
 
 async def test_copilot_app_builds_deeplink(monkeypatch):
-    from courier.listener.wakeups import CopilotAppWakeup
+    from postbox.listener.wakeups import CopilotAppWakeup
     captured = {}
 
     async def fake_run(cmd):
@@ -1619,9 +1619,9 @@ async def test_copilot_app_builds_deeplink(monkeypatch):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_listener.py -v`
-Expected: FAIL — `ModuleNotFoundError: courier.listener.wakeups`.
+Expected: FAIL — `ModuleNotFoundError: postbox.listener.wakeups`.
 
-- [ ] **Step 3: Implement `courier/listener/wakeups.py`**
+- [ ] **Step 3: Implement `postbox/listener/wakeups.py`**
 
 ```python
 import asyncio
@@ -1678,7 +1678,7 @@ class OsNotifyWakeup:
 
     async def wake(self, event: dict) -> None:
         text = _notification_text(event)
-        script = f'display notification {shlex.quote(text)} with title "Courier"'
+        script = f'display notification {shlex.quote(text)} with title "Postbox"'
         await self._run(["osascript", "-e", script])
 
 
@@ -1699,7 +1699,7 @@ def build_wakeup(kind: str, repo: str = "owner/repo"):
 Run: `pytest tests/test_listener.py -v`
 Expected: 4 passed.
 
-- [ ] **Step 5: Implement `courier/listener/daemon.py`**
+- [ ] **Step 5: Implement `postbox/listener/daemon.py`**
 
 ```python
 import argparse
@@ -1711,9 +1711,9 @@ import os
 import httpx
 from httpx_sse import aconnect_sse
 
-from courier.listener.wakeups import build_wakeup
+from postbox.listener.wakeups import build_wakeup
 
-log = logging.getLogger("courier.listener")
+log = logging.getLogger("postbox.listener")
 
 
 async def run_daemon(url: str, token: str, wakeup) -> None:
@@ -1740,7 +1740,7 @@ async def run_daemon(url: str, token: str, wakeup) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    p = argparse.ArgumentParser(description="Courier listener daemon")
+    p = argparse.ArgumentParser(description="Postbox listener daemon")
     p.add_argument("--url", default=os.environ.get("COURIER_URL", "http://127.0.0.1:8765"))
     p.add_argument("--token", default=os.environ.get("COURIER_TOKEN"))
     p.add_argument("--wakeup", default="os_notify",
@@ -1765,7 +1765,7 @@ Expected: 4 passed.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add courier/listener/ tests/test_listener.py
+git add postbox/listener/ tests/test_listener.py
 git commit -m "add listener daemon + wakeup strategies (copilot cli/app, os-notify, stub)"
 ```
 
@@ -1780,14 +1780,14 @@ git commit -m "add listener daemon + wakeup strategies (copilot cli/app, os-noti
 - [ ] **Step 1: Write `README.md`**
 
 ````markdown
-# Courier — local email for AI agents
+# Postbox — local email for AI agents
 
 Each agent has an identity + inbox and exchanges async, threaded messages.
 
 ## Run the service
 ```bash
 pip install -e ".[dev]"
-python -m courier.main          # serves http://127.0.0.1:8765
+python -m postbox.main          # serves http://127.0.0.1:8765
 ```
 
 ## Register two agents
@@ -1802,10 +1802,10 @@ curl -s -XPOST localhost:8765/agents -d '{"name":"Copilot App","address":"app"}'
 ```json
 {
   "mcpServers": {
-    "courier": {
+    "postbox": {
       "type": "local",
       "command": "python",
-      "args": ["-m", "courier.mcp_server"],
+      "args": ["-m", "postbox.mcp_server"],
       "env": { "COURIER_URL": "http://127.0.0.1:8765", "COURIER_TOKEN": "<copilot-token>" }
     }
   }
@@ -1815,7 +1815,7 @@ The standalone Copilot app auto-inherits this server.
 
 ## Run a listener (wakeup on new mail)
 ```bash
-COURIER_TOKEN=<app-token> python -m courier.listener.daemon --wakeup copilot_app --repo owner/repo
+COURIER_TOKEN=<app-token> python -m postbox.listener.daemon --wakeup copilot_app --repo owner/repo
 # or --wakeup copilot_cli  /  --wakeup os_notify  /  --wakeup stub
 ```
 
@@ -1835,7 +1835,7 @@ COURIER_TOKEN=<app-token> python -m courier.listener.daemon --wakeup copilot_app
 
 - [ ] **Step 2: Update `CLAUDE.md` workspace index**
 
-Replace the "Status" line and add the code modules to the Workspace Index section (service implemented; list `courier/` modules and `tests/`).
+Replace the "Status" line and add the code modules to the Workspace Index section (service implemented; list `postbox/` modules and `tests/`).
 
 - [ ] **Step 3: Run the full test suite**
 

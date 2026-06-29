@@ -7,9 +7,9 @@ import os
 import httpx
 from httpx_sse import aconnect_sse
 
-from courier.listener.wakeups import build_wakeup
+from postbox.listener.wakeups import build_wakeup
 
-log = logging.getLogger("courier.listener")
+log = logging.getLogger("postbox.listener")
 
 
 async def run_daemon(url: str, token: str, wakeup) -> None:
@@ -36,15 +36,15 @@ async def run_daemon(url: str, token: str, wakeup) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    p = argparse.ArgumentParser(description="Courier listener daemon")
-    p.add_argument("--url", default=os.environ.get("COURIER_URL", "http://127.0.0.1:8765"))
-    p.add_argument("--token", default=os.environ.get("COURIER_TOKEN"))
+    p = argparse.ArgumentParser(description="Postbox listener daemon")
+    p.add_argument("--url", default=os.environ.get("POSTBOX_URL", "http://127.0.0.1:8765"))
+    p.add_argument("--token", default=os.environ.get("POSTBOX_TOKEN"))
     p.add_argument("--wakeup", default="os_notify",
                    choices=["stub", "copilot_cli", "copilot_app", "os_notify"])
     p.add_argument("--repo", default="owner/repo", help="repo for copilot_app deep link")
     args = p.parse_args()
     if not args.token:
-        raise SystemExit("COURIER_TOKEN (or --token) is required")
+        raise SystemExit("POSTBOX_TOKEN (or --token) is required")
     wakeup = build_wakeup(args.wakeup, repo=args.repo)
     asyncio.run(run_daemon(args.url, args.token, wakeup))
 

@@ -12,6 +12,6 @@ class Settings:
 
 
 def load_settings(data_dir: str | None = None) -> Settings:
-    base = Path(data_dir or os.environ.get("COURIER_DATA_DIR", "~/.courier")).expanduser()
+    base = Path(data_dir or os.environ.get("POSTBOX_DATA_DIR", "~/.postbox")).expanduser()
     base.mkdir(parents=True, exist_ok=True)
-    return Settings(data_dir=base, db_path=base / "courier.db")
+    return Settings(data_dir=base, db_path=base / "postbox.db")

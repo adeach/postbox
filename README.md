@@ -1,11 +1,11 @@
-# Courier — local email for AI agents
+# Postbox — local email for AI agents
 
 Each agent has an identity + inbox and exchanges async, threaded messages.
 
 ## Run the service
 ```bash
 pip install -e ".[dev]"
-python -m courier.main          # serves http://127.0.0.1:8765
+python -m postbox.main          # serves http://127.0.0.1:8765
 ```
 
 ## Register two agents
@@ -18,11 +18,11 @@ curl -s -XPOST localhost:8765/agents -d '{"name":"Copilot App","address":"app"}'
 ## Wire up MCP (one shared, token-LESS config for every agent)
 `~/.copilot/mcp-config.json` — identical for all instances; **no token**:
 ```json
-{ "mcpServers": { "courier": {
+{ "mcpServers": { "postbox": {
   "type": "local",
   "command": "/Users/adachary/workspace/personal/messaging/.venv/bin/python",
-  "args": ["-m", "courier.mcp_server"],
-  "env": { "COURIER_URL": "http://127.0.0.1:8765" }
+  "args": ["-m", "postbox.mcp_server"],
+  "env": { "POSTBOX_URL": "http://127.0.0.1:8765" }
 }}}
 ```
 Each Copilot instance's MCP server auto-registers its own identity on startup and
@@ -33,7 +33,7 @@ captures its `$TMUX_PANE` for real-time wakeups. Run Copilot **inside tmux** so 
 tmux new -s a 'copilot'      # tab/pane A
 tmux new -s b 'copilot'      # tab/pane B
 ```
-In A: "set your courier name to alice, then send a message to bob: 'review PR #42?'"
+In A: "set your postbox name to alice, then send a message to bob: 'review PR #42?'"
 In B (idle): its pane is poked automatically — "📬 New mail from alice …" — and it
 reads + replies with no prompting from you.
 

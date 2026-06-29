@@ -1,7 +1,7 @@
 import uvicorn
 
-from courier.api import create_app
-from courier.config import load_settings
+from postbox.api import create_app
+from postbox.config import load_settings
 
 app = create_app()
 

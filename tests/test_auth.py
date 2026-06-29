@@ -1,4 +1,4 @@
-from courier.auth import new_id, now_iso, generate_token, hash_token
+from postbox.auth import new_id, now_iso, generate_token, hash_token
 
 
 def test_new_id_unique():

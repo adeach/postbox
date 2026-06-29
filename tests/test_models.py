@@ -1,5 +1,5 @@
 import pytest
-from courier.models import RegisterAgent, SendMessage
+from postbox.models import RegisterAgent, SendMessage
 
 
 def test_register_with_name_and_address():
@@ -15,7 +15,7 @@ def test_send_message_defaults():
 
 
 def test_wakeup_model_and_register_defaults():
-    from courier.models import RegisterAgent, Wakeup
+    from postbox.models import RegisterAgent, Wakeup
     m = RegisterAgent(wakeup=Wakeup(kind="tmux", target="%5"))
     assert m.name is None                 # name optional in v2 (server defaults it)
     assert m.wakeup.kind == "tmux" and m.wakeup.target == "%5"
@@ -24,5 +24,5 @@ def test_wakeup_model_and_register_defaults():
 
 
 def test_set_name_model():
-    from courier.models import SetName
+    from postbox.models import SetName
     assert SetName(name="alice").name == "alice"

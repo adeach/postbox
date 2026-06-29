@@ -7,8 +7,8 @@ import tempfile
 import httpx
 import uvicorn
 
-from courier.api import create_app
-from courier.mcp_server import Session
+from postbox.api import create_app
+from postbox.mcp_server import Session
 
 OK = "\033[92mPASS\033[0m"
 
@@ -23,7 +23,7 @@ async def main():
     port = server.servers[0].sockets[0].getsockname()[1]
     base = f"http://127.0.0.1:{port}"
 
-    sess_name = "courier_v2_e2e"
+    sess_name = "postbox_v2_e2e"
     outfile = os.path.join(tempfile.mkdtemp(), "pane.txt")
     await (await asyncio.create_subprocess_exec(
         "tmux", "new-session", "-d", "-s", sess_name, f"cat > {outfile}")).wait()

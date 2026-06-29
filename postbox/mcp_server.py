@@ -7,7 +7,7 @@ import httpx
 from httpx_sse import aconnect_sse
 from mcp.server.fastmcp import FastMCP
 
-from courier.listener.wakeups import build_wakeup
+from postbox.listener.wakeups import build_wakeup
 
 
 class MailTools:
@@ -62,7 +62,7 @@ class MailTools:
 
 
 INSTRUCTIONS = (
-    "You have a Courier mailbox for talking to other agents. "
+    "You have a Postbox mailbox for talking to other agents. "
     "When you see a line starting with '📬 New mail', immediately call check_inbox, "
     "then read_message and act on or reply to it. If unsure whether you have mail, "
     "call check_inbox at the start of your turn. Use set_name to pick your display name."
@@ -96,7 +96,7 @@ class Session:
     def _build_wakeup(self):
         if not self.pane:
             return build_wakeup("stub")
-        from courier.listener.wakeups import TmuxWakeup
+        from postbox.listener.wakeups import TmuxWakeup
         if self._runner:
             return TmuxWakeup(pane=self.pane, runner=self._runner)
         return TmuxWakeup(pane=self.pane)
@@ -135,9 +135,9 @@ class Session:
 
 
 def build_server():
-    url = os.environ.get("COURIER_URL", "http://127.0.0.1:8765")
+    url = os.environ.get("POSTBOX_URL", "http://127.0.0.1:8765")
     pane = os.environ.get("TMUX_PANE")          # inherited inside a tmux pane
-    name = os.environ.get("COURIER_NAME")       # optional desired name
+    name = os.environ.get("POSTBOX_NAME")       # optional desired name
     client = httpx.AsyncClient(base_url=url)
     session = Session(client, pane=pane, desired_name=name)
 
@@ -150,7 +150,7 @@ def build_server():
             await session.stop()
             await client.aclose()
 
-    mcp = FastMCP("courier-mail", instructions=INSTRUCTIONS, lifespan=lifespan)
+    mcp = FastMCP("postbox-mail", instructions=INSTRUCTIONS, lifespan=lifespan)
 
     @mcp.tool()
     async def list_agents() -> list[dict]:

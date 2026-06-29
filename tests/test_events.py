@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-from courier.events import EventBus, Event
+from postbox.events import EventBus, Event
 
 
 @pytest.fixture(autouse=True)

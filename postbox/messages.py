@@ -1,8 +1,8 @@
-from courier.agents import AgentService
-from courier.auth import new_id, now_iso
-from courier.db import Database
-from courier.events import EventBus
-from courier.models import MessageOut, SendMessage
+from postbox.agents import AgentService
+from postbox.auth import new_id, now_iso
+from postbox.db import Database
+from postbox.events import EventBus
+from postbox.models import MessageOut, SendMessage
 
 
 class MessageService:

@@ -1,4 +1,4 @@
-# Courier v2 — Session Identity + Real-Time tmux Wakeup — Design Spec
+# Postbox v2 — Session Identity + Real-Time tmux Wakeup — Design Spec
 
 **Date:** 2026-06-29
 **Status:** Approved approach (dialogue) — spec for review
@@ -13,14 +13,14 @@
 ## 2. Core ideas
 
 **A. Identity is per-session and self-assigned — not configured.**
-Each Copilot instance launches its *own* `courier.mcp_server` subprocess (stdio servers are per-client-process). So the MCP server **auto-registers an identity on startup** and holds the token in memory for that session. The shared config carries **no token** — only `COURIER_URL`. Identical for every instance.
+Each Copilot instance launches its *own* `postbox.mcp_server` subprocess (stdio servers are per-client-process). So the MCP server **auto-registers an identity on startup** and holds the token in memory for that session. The shared config carries **no token** — only `COURIER_URL`. Identical for every instance.
 - `id` = a **session id** (generated per launch; adopt a Copilot-provided session id if one is exposed via env).
 - `name` = **self-assigned by the agent** (a `set_name` tool), defaulting to `copilot-<short-id>` until set. Peers address each other by name.
 
 **B. Delivery is real-time via terminal injection (tmux).**
 You can't push into Copilot through MCP (pull-only), but you can type into the **tmux pane** Copilot runs in. The MCP server, launched inside a pane, inherits `$TMUX_PANE`; it registers that as its **wakeup target**. When mail arrives, a watcher does:
 ```
-tmux send-keys -l -t <pane> "📬 New mail from <sender> — use your courier tools to read and reply."
+tmux send-keys -l -t <pane> "📬 New mail from <sender> — use your postbox tools to read and reply."
 tmux send-keys    -t <pane> Enter
 ```
 To an idle agent this lands as if typed → it wakes and acts. To a busy agent it buffers and is consumed at the next prompt. Real-time (SSE latency + send-keys = ms). Nothing is lost: the durable inbox + an auto-check instruction are the backstop.
@@ -31,13 +31,13 @@ The MCP server is already per-session and already knows the token (it registered
 
 ```
 Copilot session (in tmux pane P)
-  └─ spawns courier.mcp_server  (one shared, token-less config)
+  └─ spawns postbox.mcp_server  (one shared, token-less config)
         startup:  POST /agents {name?, wakeup:{type:tmux, pane:P}} -> token (held in memory)
         provides: MCP tools (list_agents, send_message, check_inbox, read_message, reply, set_name)
         background task: GET /events (SSE) ─ on message.received ─► tmux send-keys into pane P
         shutdown: DELETE /agents/self  (presence: drop from directory)
 
-copilot1.send_message(to="bob") ─► Courier commits to inbox, emits event
+copilot1.send_message(to="bob") ─► Postbox commits to inbox, emits event
                                          │ SSE (real-time)
                                          ▼
                                 bob's MCP server background task ─ tmux send-keys ─► bob's pane wakes
@@ -64,11 +64,11 @@ Add:
 - Heartbeat: either a periodic `PATCH /agents/self/ping` from the MCP server, or treat the live SSE connection as the liveness signal (preferred — the background SSE task *is* the heartbeat; on disconnect, mark offline).
 - Everything else (send/inbox/read/thread/events) unchanged.
 
-### MCP server (`courier.mcp_server`)
+### MCP server (`postbox.mcp_server`)
 - On startup: auto-register (read `$TMUX_PANE`; if unset, `wakeup_kind='none'` + log a warning), store token in memory.
 - Add tool `set_name(name)`.
 - Start a background asyncio task running the SSE loop; on `message.received`, run the tmux send-keys wakeup (reusing v1's wakeup strategies, now driven in-process).
-- Provide MCP **server instructions** (Copilot includes them via `--allow-all-mcp-server-instructions`): *"You have a courier mailbox. When you receive a '📬 New mail' line, call check_inbox then read_message and act. Also check_inbox at the start of a turn if unsure."* — belt-and-suspenders with the poke.
+- Provide MCP **server instructions** (Copilot includes them via `--allow-all-mcp-server-instructions`): *"You have a postbox mailbox. When you receive a '📬 New mail' line, call check_inbox then read_message and act. Also check_inbox at the start of a turn if unsure."* — belt-and-suspenders with the poke.
 - On shutdown: best-effort `DELETE /agents/self`.
 
 ### New wakeup strategy

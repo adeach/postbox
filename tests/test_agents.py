@@ -1,6 +1,6 @@
 import pytest
-from courier.agents import AgentService
-from courier.models import RegisterAgent, Wakeup
+from postbox.agents import AgentService
+from postbox.models import RegisterAgent, Wakeup
 
 
 async def test_register_returns_token_and_lists_in_directory(db):
@@ -31,8 +31,8 @@ async def test_resolve_token(db):
 
 
 async def test_register_defaults_name_and_stores_wakeup(db):
-    from courier.agents import AgentService
-    from courier.models import RegisterAgent
+    from postbox.agents import AgentService
+    from postbox.models import RegisterAgent
     svc = AgentService(db)
     res = await svc.register(RegisterAgent(wakeup=Wakeup(kind="tmux", target="%9")))
     assert res.address.startswith("copilot-")      # defaulted handle
@@ -42,8 +42,8 @@ async def test_register_defaults_name_and_stores_wakeup(db):
 
 
 async def test_set_name_changes_handle_and_rejects_duplicate(db):
-    from courier.agents import AgentService
-    from courier.models import RegisterAgent
+    from postbox.agents import AgentService
+    from postbox.models import RegisterAgent
     svc = AgentService(db)
     a = await svc.register(RegisterAgent())
     b = await svc.register(RegisterAgent())
@@ -55,8 +55,8 @@ async def test_set_name_changes_handle_and_rejects_duplicate(db):
 
 
 async def test_deregister_and_online_directory(db):
-    from courier.agents import AgentService
-    from courier.models import RegisterAgent
+    from postbox.agents import AgentService
+    from postbox.models import RegisterAgent
     svc = AgentService(db)
     a = await svc.register(RegisterAgent())
     b = await svc.register(RegisterAgent())
