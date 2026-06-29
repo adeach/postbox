@@ -1,6 +1,18 @@
 import asyncio
+import os
 import shlex
+import time
 from urllib.parse import quote, urlencode
+
+_WAKE_LOG = os.environ.get("POSTBOX_WAKEUP_LOG", "/tmp/postbox_wakeup.log")
+
+
+def _log(msg: str) -> None:
+    try:
+        with open(_WAKE_LOG, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
 
 
 def _notification_text(event: dict) -> str:
@@ -91,27 +103,36 @@ class TmuxWakeup:
         # A stable substring of the typed text, used to detect it still sitting in
         # the input box. message_id is unique; fall back to a fixed phrase.
         marker = str(event.get("message_id") or "") or "New mail from"
+        _log(f"WAKE pane={self.pane!r} marker={marker[:12]} delay={self._enter_delay}")
         # -l sends the text literally (no key interpretation).
         await self._run(["tmux", "send-keys", "-l", "-t", self.pane, text])
+        _log("  typed text")
         if self._enter_delay:
             await asyncio.sleep(self._enter_delay)
-        for _ in range(self._max_attempts):
+        for attempt in range(1, self._max_attempts + 1):
             await self._run(["tmux", "send-keys", "-t", self.pane, "Enter"])
             await asyncio.sleep(self._poll)
-            if not await self._still_in_input(marker):
-                return  # submitted (input box cleared)
-        # Could not confirm submission; the message is still durably in the inbox.
+            still = await self._still_in_input(marker)
+            _log(f"  enter#{attempt} -> still_in_input={still}")
+            if not still:
+                _log("  SUBMITTED (input cleared)")
+                return
+        _log("  GAVE UP after max attempts (text still in input box)")
 
     async def _still_in_input(self, marker: str) -> bool:
         """True if the pane's input prompt (last line containing the prompt glyph)
         still holds our text — i.e. it has not been submitted yet."""
         try:
             pane = await self._capture(self.pane)
-        except Exception:
+        except Exception as e:
+            _log(f"  capture FAILED: {e!r}")
             return False  # can't read the pane → stop retrying rather than spam
         prompt_lines = [ln for ln in pane.splitlines() if "❯" in ln]  # ❯
         if not prompt_lines:
+            _log("  capture: NO prompt-glyph line found (last3="
+                 f"{pane.splitlines()[-3:]!r})")
             return False
+        _log(f"  capture last-prompt-line={prompt_lines[-1].strip()[:90]!r}")
         return marker in prompt_lines[-1]
 
 
