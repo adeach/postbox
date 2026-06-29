@@ -49,12 +49,36 @@ async def test_tmux_wakeup_sends_literal_then_enter():
     from postbox.listener.wakeups import TmuxWakeup
     cmds = []
     async def fake_run(cmd): cmds.append(cmd)
-    w = TmuxWakeup(pane="%7", runner=fake_run, enter_delay=0)
+    async def cleared(pane): return "conversation\n❯\n"   # input box empty → submitted
+    w = TmuxWakeup(pane="%7", runner=fake_run, enter_delay=0, poll_interval=0,
+                   capturer=cleared)
     await w.wake({"from": "alice", "subject": "review", "message_id": "m1"})
     # first command sends the literal text to the pane, second sends Enter
     assert cmds[0][:4] == ["tmux", "send-keys", "-l", "-t"] and cmds[0][4] == "%7"
     assert "alice" in cmds[0][5]
     assert cmds[1] == ["tmux", "send-keys", "-t", "%7", "Enter"]
+    # input cleared after the first Enter → no extra Enters
+    assert sum(1 for c in cmds if c[-1] == "Enter") == 1
+
+
+async def test_tmux_wakeup_retries_enter_until_input_clears():
+    """If the first Enter doesn't submit (text still in the input box), it retries
+    until the pane read-back shows the text is gone."""
+    from postbox.listener.wakeups import TmuxWakeup
+    cmds = []
+    async def fake_run(cmd): cmds.append(cmd)
+    state = {"reads": 0}
+    async def capture(pane):
+        state["reads"] += 1
+        # still in the input box for the first two checks, then submitted
+        if state["reads"] < 3:
+            return "conversation\n❯ 📬 New mail (message mZ). reply\n"
+        return "conversation\n❯ 📬 New mail (message mZ). reply   12:00\n❯\n"
+    w = TmuxWakeup(pane="%9", runner=fake_run, enter_delay=0, poll_interval=0,
+                   capturer=capture)
+    await w.wake({"from": "bob", "subject": "", "message_id": "mZ"})
+    enters = sum(1 for c in cmds if c[-1] == "Enter")
+    assert enters == 3                                  # retried until it submitted
 
 
 def test_build_wakeup_tmux():
