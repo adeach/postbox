@@ -20,7 +20,27 @@ class Database:
         await self._conn.execute("PRAGMA journal_mode=WAL;")
         await self._conn.execute("PRAGMA foreign_keys=ON;")
         await self._conn.executescript(SCHEMA)
+        await self._migrate()
         await self._conn.commit()
+
+    async def _migrate(self) -> None:
+        """Additive, idempotent migrations for existing databases."""
+        cur = await self._conn.execute("PRAGMA table_info(agents);")
+        cols = {r[1] for r in await cur.fetchall()}
+        adds = {
+            "wakeup_kind": "TEXT NOT NULL DEFAULT 'none'",
+            "wakeup_target": "TEXT",
+            "status": "TEXT NOT NULL DEFAULT 'online'",
+            "last_seen": "TEXT",
+        }
+        for col, decl in adds.items():
+            if col not in cols:
+                await self._conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {decl};")
+        # A row that predates the status column has no live SSE session behind it,
+        # so it must NOT appear online. The ADD COLUMN default is 'online' (correct
+        # for new registrations); flip pre-existing rows to 'offline' on first upgrade.
+        if "status" not in cols:
+            await self._conn.execute("UPDATE agents SET status='offline';")
 
     async def close(self) -> None:
         if self._conn:

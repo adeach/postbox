@@ -1,10 +1,14 @@
 CREATE TABLE IF NOT EXISTS agents (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  address     TEXT UNIQUE NOT NULL,
-  profile     TEXT,
-  token_hash  TEXT NOT NULL,
-  created_at  TEXT NOT NULL
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  address       TEXT UNIQUE NOT NULL,
+  profile       TEXT,
+  token_hash    TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  wakeup_kind   TEXT NOT NULL DEFAULT 'none',
+  wakeup_target TEXT,
+  status        TEXT NOT NULL DEFAULT 'online',
+  last_seen     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (

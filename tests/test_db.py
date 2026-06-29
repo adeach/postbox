@@ -30,3 +30,9 @@ async def test_execute_and_fetch(db):
     )
     row = await db.fetchone("SELECT name FROM agents WHERE id=?", ("a1",))
     assert row[0] == "A"
+
+
+async def test_agents_has_v2_columns(db):
+    rows = await db.fetchall("PRAGMA table_info(agents);")
+    cols = {r[1] for r in rows}
+    assert {"wakeup_kind", "wakeup_target", "status", "last_seen"} <= cols

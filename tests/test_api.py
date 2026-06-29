@@ -68,3 +68,31 @@ async def test_read_permissions(client):
     # unrelated third agent → 403
     r = await client.get(f"/messages/{mid}", headers=ch)
     assert r.status_code == 403
+
+
+async def test_register_with_wakeup_and_default_name(client):
+    r = await client.post("/agents", json={"wakeup": {"kind": "tmux", "target": "%3"}})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["address"].startswith("copilot-") and body["token"]
+
+
+async def test_set_name_then_address_by_name(client):
+    a = (await client.post("/agents", json={})).json()
+    ah = {"Authorization": f"Bearer {a['token']}"}
+    r = await client.patch("/agents/self", headers=ah, json={"name": "alice"})
+    assert r.status_code == 200 and r.json()["address"] == "alice"
+    # another agent can now send to "alice"
+    b = (await client.post("/agents", json={})).json()
+    bh = {"Authorization": f"Bearer {b['token']}"}
+    s = await client.post("/messages", headers=bh, json={"to": "alice", "body": "hi"})
+    assert s.status_code == 201
+
+
+async def test_deregister_self(client):
+    a = (await client.post("/agents", json={})).json()
+    ah = {"Authorization": f"Bearer {a['token']}"}
+    r = await client.delete("/agents/self", headers=ah)
+    assert r.status_code == 204
+    # no longer in the online directory
+    assert all(x["id"] != a["id"] for x in (await client.get("/agents")).json())

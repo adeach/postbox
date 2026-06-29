@@ -1,10 +1,16 @@
-"""Verify the MCP path the way Copilot actually uses it: launch courier.mcp_server
-as a real stdio MCP subprocess, do the MCP handshake, list tools, and call them.
-Proves the agent-facing integration, not just the REST layer underneath.
+"""Verify the v2 MCP path the way Copilot actually uses it: launch courier.mcp_server
+as a real stdio MCP subprocess with ONLY COURIER_URL set (token-LESS config), do the
+MCP handshake, list tools, and confirm the server auto-registered its own identity.
+
+v2 changed the MCP surface: the server no longer reads COURIER_TOKEN — its lifespan
+auto-registers a session identity (a `copilot-*` agent) on startup, exposes a `set_name`
+tool, and deregisters on shutdown. So we pass no token, ensure TMUX_PANE is absent
+(wakeup kind 'none'), and assert the new behaviour over real stdio MCP.
 """
 import asyncio
 import os
 import sys
+import tempfile
 
 import httpx
 import uvicorn
@@ -26,17 +32,22 @@ def _text(result):
     return "".join(getattr(c, "text", "") for c in result.content)
 
 
-async def mcp_session(url, token):
-    params = StdioServerParameters(
+def mcp_params(url):
+    # Token-LESS v2 config: only COURIER_URL. Strip COURIER_TOKEN (ignored now) and
+    # TMUX_PANE (so the auto-registered session uses wakeup kind 'none', not tmux —
+    # otherwise a shell running inside tmux would leak its real pane in).
+    env = {**os.environ, "COURIER_URL": url}
+    env.pop("COURIER_TOKEN", None)
+    env.pop("TMUX_PANE", None)
+    return StdioServerParameters(
         command=sys.executable,
         args=["-m", "courier.mcp_server"],
-        env={**os.environ, "COURIER_URL": url, "COURIER_TOKEN": token},
+        env=env,
     )
-    return params
 
 
 async def main():
-    app = create_app()
+    app = create_app(tempfile.mkdtemp())
     cfg = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error", lifespan="on")
     server = uvicorn.Server(cfg)
     task = asyncio.create_task(server.serve())
@@ -45,43 +56,35 @@ async def main():
     port = server.servers[0].sockets[0].getsockname()[1]
     url = f"http://127.0.0.1:{port}"
 
-    async with httpx.AsyncClient(base_url=url) as c:
-        cop = (await c.post("/agents", json={"name": "Copilot", "address": "copilot"})).json()
-        appa = (await c.post("/agents", json={"name": "App", "address": "app"})).json()
-
-    print("\nMCP — copilot connects to courier.mcp_server over stdio")
-    cop_params = await mcp_session(url, cop["token"])
-    async with stdio_client(cop_params) as (r, w):
+    print("\nMCP v2 — a Copilot session connects to courier.mcp_server over stdio (no token)")
+    async with stdio_client(mcp_params(url)) as (r, w):
         async with ClientSession(r, w) as s:
             await s.initialize()
             tools = await s.list_tools()
             names = {t.name for t in tools.tools}
-            check("MCP handshake + tools exposed", names >= {
-                "list_agents", "send_message", "check_inbox", "read_message", "reply"})
+            check("MCP handshake + v2 tools exposed (incl. set_name)", names >= {
+                "list_agents", "send_message", "check_inbox", "read_message",
+                "reply", "set_name"})
             print(f"      tools: {sorted(names)}")
 
+            # The server auto-registered its own identity on startup — the directory
+            # (online-only) must show a `copilot-*` agent. Check it WHILE the
+            # subprocess is alive; on shutdown the session deregisters (goes offline).
             dir_res = _text(await s.call_tool("list_agents", {}))
-            check("list_agents tool returns the directory", "copilot" in dir_res and "app" in dir_res)
+            check("server auto-registered a copilot-* session identity",
+                  "copilot-" in dir_res)
+            print(f"      directory: {dir_res}")
 
-            send_res = _text(await s.call_tool("send_message", {
-                "to": "app", "body": "review PR #42 please", "subject": "review"}))
-            check("send_message tool succeeds", "review PR #42 please" in send_res)
-
-            empty = _text(await s.call_tool("check_inbox", {"unread": True}))
-            check("copilot's own inbox is empty", empty.strip() in ("[]", ""))
-
-    print("\nMCP — app connects and reads its inbox via the tool")
-    app_params = await mcp_session(url, appa["token"])
-    async with stdio_client(app_params) as (r, w):
-        async with ClientSession(r, w) as s:
-            await s.initialize()
-            inbox = _text(await s.call_tool("check_inbox", {"unread": True}))
-            check("app sees the message via the MCP check_inbox tool",
-                  "review PR #42 please" in inbox)
+    # After the stdio session closes, its lifespan deregistered the agent: the online
+    # directory is empty again (proves clean deregister).
+    async with httpx.AsyncClient(base_url=url) as c:
+        online = (await c.get("/agents")).json()
+        check("session deregistered on shutdown (online directory empty)", online == [])
 
     server.should_exit = True
     await task
-    print("\n\033[92mMCP PATH VERIFIED\033[0m — Copilot-style stdio tools work end to end.\n")
+    print("\n\033[92mMCP v2 PATH VERIFIED\033[0m — token-less stdio session auto-registers, "
+          "exposes set_name, deregisters on exit.\n")
 
 
 if __name__ == "__main__":
