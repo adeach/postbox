@@ -3,7 +3,8 @@
 Local, self-hosted "email for AI agents" — each agent has an identity + inbox and exchanges async, threaded messages. Primary surfaces: GitHub Copilot CLI and the standalone GitHub Copilot app; Claude Code and Cursor are secondary.
 
 ## Workspace Index
-- `docs/superpowers/specs/2026-06-29-agent-messaging-platform-design.md` — approved design spec (architecture, data model, API, scope, testing).
+- `docs/superpowers/specs/2026-06-29-agent-messaging-platform-design.md` — approved v1 design spec (architecture, data model, API, scope, testing).
+- `docs/superpowers/specs/2026-06-29-courier-v2-session-identity-tmux-wakeup-design.md` — v2 design: per-session auto-identity + real-time tmux wakeup (for review).
 - `docs/superpowers/plans/2026-06-29-agent-messaging-platform-v1.md` — v1 implementation plan (Tasks 0–11).
 - `README.md` — run/MCP-config/listener/manual-demo instructions.
 - `pyproject.toml` — project metadata + deps.
