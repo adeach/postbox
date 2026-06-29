@@ -56,13 +56,31 @@ class OsNotifyWakeup:
         await self._run(["osascript", "-e", script])
 
 
-def build_wakeup(kind: str, repo: str = "owner/repo"):
+class TmuxWakeup:
+    """Inject a notification line into the agent's tmux pane (idle interrupt)."""
+
+    def __init__(self, pane: str, runner=_default_runner):
+        self.pane = pane
+        self._run = runner
+
+    async def wake(self, event: dict) -> None:
+        text = _notification_text(event)
+        # -l sends the text literally (no key interpretation); Enter submits it.
+        await self._run(["tmux", "send-keys", "-l", "-t", self.pane, text])
+        await self._run(["tmux", "send-keys", "-t", self.pane, "Enter"])
+
+
+def build_wakeup(kind: str, repo: str = "owner/repo", target: str | None = None):
     if kind == "stub":
         return StubWakeup()
     if kind == "copilot_cli":
         return CopilotCliWakeup()
     if kind == "copilot_app":
         return CopilotAppWakeup(repo=repo)
+    if kind == "tmux":
+        if not target:
+            raise ValueError("tmux wakeup requires a target pane")
+        return TmuxWakeup(pane=target)
     if kind == "os_notify":
         return OsNotifyWakeup()
     raise ValueError(f"unknown wakeup strategy: {kind}")
