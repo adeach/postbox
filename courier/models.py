@@ -1,10 +1,16 @@
 from pydantic import BaseModel
 
 
+class Wakeup(BaseModel):
+    kind: str = "none"          # 'tmux' | 'os_notify' | 'none'
+    target: str | None = None   # e.g. the $TMUX_PANE value
+
+
 class RegisterAgent(BaseModel):
-    name: str
-    address: str
+    name: str | None = None     # v2: optional; server defaults to copilot-<short id>
+    address: str | None = None  # v2: optional; defaults to name
     profile: dict | None = None
+    wakeup: Wakeup = Wakeup()
 
 
 class AgentOut(BaseModel):
@@ -12,10 +18,15 @@ class AgentOut(BaseModel):
     name: str
     address: str
     profile: dict | None = None
+    status: str = "online"
 
 
 class RegisterResult(AgentOut):
     token: str
+
+
+class SetName(BaseModel):
+    name: str
 
 
 class SendMessage(BaseModel):
