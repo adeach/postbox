@@ -143,8 +143,8 @@ def build_server():
 
     @asynccontextmanager
     async def lifespan(_server):
-        await session.start()
         try:
+            await session.start()       # inside try so the client is closed even if boot fails
             yield {"session": session}
         finally:
             await session.stop()
