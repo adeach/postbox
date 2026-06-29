@@ -24,11 +24,13 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `courier/listener/daemon.py` — SSE client loop → wakeup dispatch (`run_daemon` + `main`).
 - `scripts/e2e_verify.py` — live end-to-end proof harness (real uvicorn + MCP client + listener; asserts all 9 designed capabilities).
 - `scripts/mcp_verify.py` — drives `courier.mcp_server` over real stdio MCP (handshake + tools/list + tool calls) the way Copilot does.
+- `scripts/v2_tmux_e2e.py` — real-tmux end-to-end proof (v2): a Session's wakeup loop pokes a live tmux pane when mail arrives.
 - `tests/conftest.py` — `db` fixture (temp-db Database).
 - `tests/test_smoke.py` `test_db.py` `test_auth.py` `test_models.py` `test_agents.py` `test_events.py` `test_messages.py` `test_api.py` `test_sse.py` `test_mcp.py` `test_listener.py` — per-module test suites.
 
 ## Status
 v1 service implemented (2026-06-29). REST + SSE service, MCP server, and listener daemon built and tested (39 tests passing).
+v2 implemented (2026-06-29): per-session auto-identity (token-less shared MCP config, `set_name`) + real-time tmux wakeup (idle pane poked on new mail).
 
 ## Stack
 Python + FastAPI (REST + SSE via sse-starlette), SQLite (WAL) via aiosqlite, official Python MCP SDK, httpx + httpx-sse (client side). Single `uvicorn` process.

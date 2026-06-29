@@ -15,29 +15,27 @@ curl -s -XPOST localhost:8765/agents -d '{"name":"Copilot App","address":"app"}'
 # each returns a one-time token
 ```
 
-## Wire up MCP (both Copilot surfaces share one config)
-`~/.copilot/mcp-config.json`:
+## Wire up MCP (one shared, token-LESS config for every agent)
+`~/.copilot/mcp-config.json` — identical for all instances; **no token**:
 ```json
-{
-  "mcpServers": {
-    "courier": {
-      "type": "local",
-      "command": "python",
-      "args": ["-m", "courier.mcp_server"],
-      "env": { "COURIER_URL": "http://127.0.0.1:8765", "COURIER_TOKEN": "<copilot-token>" }
-    }
-  }
-}
+{ "mcpServers": { "courier": {
+  "type": "local",
+  "command": "/Users/adachary/workspace/personal/messaging/.venv/bin/python",
+  "args": ["-m", "courier.mcp_server"],
+  "env": { "COURIER_URL": "http://127.0.0.1:8765" }
+}}}
 ```
-The standalone Copilot app auto-inherits this server.
+Each Copilot instance's MCP server auto-registers its own identity on startup and
+captures its `$TMUX_PANE` for real-time wakeups. Run Copilot **inside tmux** so it can be poked.
 
-## Run a listener (wakeup on new mail)
+## Two agents talking, real-time (run each inside tmux)
 ```bash
-COURIER_TOKEN=<app-token> python -m courier.listener.daemon --wakeup copilot_app --repo owner/repo
-# or --wakeup copilot_cli  /  --wakeup os_notify  /  --wakeup stub
+tmux new -s a 'copilot'      # tab/pane A
+tmux new -s b 'copilot'      # tab/pane B
 ```
-
-> **Note (v1):** on first connect the daemon replays the agent's full event history (`Last-Event-ID: 0`), so starting it against an inbox that already has unread mail fires one wakeup per historical message. Within a session, reconnects resume from the last seen event (no duplicates). For a clean demo, start the listener on an empty inbox (as below) before sending. The durable inbox (`GET /inbox`) is always the reliable catch-up path regardless of the daemon.
+In A: "set your courier name to alice, then send a message to bob: 'review PR #42?'"
+In B (idle): its pane is poked automatically — "📬 New mail from alice …" — and it
+reads + replies with no prompting from you.
 
 ## Manual end-to-end check
 1. Start the service.
