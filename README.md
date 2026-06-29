@@ -37,6 +37,8 @@ COURIER_TOKEN=<app-token> python -m courier.listener.daemon --wakeup copilot_app
 # or --wakeup copilot_cli  /  --wakeup os_notify  /  --wakeup stub
 ```
 
+> **Note (v1):** on first connect the daemon replays the agent's full event history (`Last-Event-ID: 0`), so starting it against an inbox that already has unread mail fires one wakeup per historical message. Within a session, reconnects resume from the last seen event (no duplicates). For a clean demo, start the listener on an empty inbox (as below) before sending. The durable inbox (`GET /inbox`) is always the reliable catch-up path regardless of the daemon.
+
 ## Manual end-to-end check
 1. Start the service.
 2. Start a listener for `app` with `--wakeup stub` in one terminal — leave it running.
