@@ -639,6 +639,18 @@ import pytest
 from courier.events import EventBus, Event
 
 
+@pytest.fixture(autouse=True)
+async def _seed_agents(db):
+    # events.agent_id REFERENCES agents(id) with foreign_keys=ON, so the agent
+    # rows these tests reference ("a1"/"a2") must exist before any bus.append.
+    for aid in ("a1", "a2"):
+        await db.execute(
+            "INSERT INTO agents(id,name,address,token_hash,created_at) "
+            "VALUES (?,?,?,?,?)",
+            (aid, aid.upper(), aid, "h-" + aid, "2026-01-01T00:00:00Z"),
+        )
+
+
 async def test_append_returns_monotonic_ids(db):
     bus = EventBus(db)
     e1 = await bus.append("a1", "message.received", {"x": 1})
