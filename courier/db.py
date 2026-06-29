@@ -36,6 +36,11 @@ class Database:
         for col, decl in adds.items():
             if col not in cols:
                 await self._conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {decl};")
+        # A row that predates the status column has no live SSE session behind it,
+        # so it must NOT appear online. The ADD COLUMN default is 'online' (correct
+        # for new registrations); flip pre-existing rows to 'offline' on first upgrade.
+        if "status" not in cols:
+            await self._conn.execute("UPDATE agents SET status='offline';")
 
     async def close(self) -> None:
         if self._conn:
