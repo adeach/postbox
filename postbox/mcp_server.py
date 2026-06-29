@@ -97,9 +97,10 @@ class Session:
         if not self.pane:
             return build_wakeup("stub")
         from postbox.listener.wakeups import TmuxWakeup
+        delay = float(os.environ.get("POSTBOX_ENTER_DELAY", "0.4"))  # tune if Enter doesn't submit
         if self._runner:
-            return TmuxWakeup(pane=self.pane, runner=self._runner)
-        return TmuxWakeup(pane=self.pane)
+            return TmuxWakeup(pane=self.pane, runner=self._runner, enter_delay=delay)
+        return TmuxWakeup(pane=self.pane, enter_delay=delay)
 
     async def _wakeup_loop(self) -> None:
         import json as _json

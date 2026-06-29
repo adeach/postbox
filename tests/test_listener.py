@@ -49,7 +49,7 @@ async def test_tmux_wakeup_sends_literal_then_enter():
     from postbox.listener.wakeups import TmuxWakeup
     cmds = []
     async def fake_run(cmd): cmds.append(cmd)
-    w = TmuxWakeup(pane="%7", runner=fake_run)
+    w = TmuxWakeup(pane="%7", runner=fake_run, enter_delay=0)
     await w.wake({"from": "alice", "subject": "review", "message_id": "m1"})
     # first command sends the literal text to the pane, second sends Enter
     assert cmds[0][:4] == ["tmux", "send-keys", "-l", "-t"] and cmds[0][4] == "%7"

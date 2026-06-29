@@ -59,14 +59,21 @@ class OsNotifyWakeup:
 class TmuxWakeup:
     """Inject a notification line into the agent's tmux pane (idle interrupt)."""
 
-    def __init__(self, pane: str, runner=_default_runner):
+    def __init__(self, pane: str, runner=_default_runner, enter_delay: float = 0.4):
         self.pane = pane
         self._run = runner
+        # Pause between typing the text and pressing Enter. Copilot/Claude inputs
+        # are Ink/React TUIs that batch a burst of input, so an Enter sent
+        # immediately after the text is absorbed as a literal newline instead of
+        # submitting. A short gap makes Enter register as its own keypress.
+        self._enter_delay = enter_delay
 
     async def wake(self, event: dict) -> None:
         text = _notification_text(event)
-        # -l sends the text literally (no key interpretation); Enter submits it.
+        # -l sends the text literally (no key interpretation).
         await self._run(["tmux", "send-keys", "-l", "-t", self.pane, text])
+        if self._enter_delay:
+            await asyncio.sleep(self._enter_delay)
         await self._run(["tmux", "send-keys", "-t", self.pane, "Enter"])
 
 
