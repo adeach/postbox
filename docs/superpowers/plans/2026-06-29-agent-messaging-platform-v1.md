@@ -794,7 +794,7 @@ class EventBus:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_events.py -v`
-Expected: 4 passed.
+Expected: 5 passed (incl. `test_stream_drops_already_replayed_live_event`, which mutation-kills the dedup guard).
 
 - [ ] **Step 5: Commit**
 
