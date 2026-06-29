@@ -53,10 +53,12 @@ async def test_tmux_wakeup_sends_literal_then_enter():
     w = TmuxWakeup(pane="%7", runner=fake_run, enter_delay=0, poll_interval=0,
                    capturer=cleared)
     await w.wake({"from": "alice", "subject": "review", "message_id": "m1"})
-    # first command sends the literal text to the pane, second sends Enter
+    # first command types the literal text
     assert cmds[0][:4] == ["tmux", "send-keys", "-l", "-t"] and cmds[0][4] == "%7"
     assert "alice" in cmds[0][5]
-    assert cmds[1] == ["tmux", "send-keys", "-t", "%7", "Enter"]
+    # then each submit attempt sends focus-in (ESC[I) followed by Enter
+    assert cmds[1] == ["tmux", "send-keys", "-t", "%7", "-H", "1b", "5b", "49"]
+    assert cmds[2] == ["tmux", "send-keys", "-t", "%7", "Enter"]
     # input cleared after the first Enter → no extra Enters
     assert sum(1 for c in cmds if c[-1] == "Enter") == 1
 

@@ -22,6 +22,26 @@ def _notification_text(event: dict) -> str:
             f"Use your mail tools to check_inbox and read_message, then reply.")
 
 
+def _input_box_content(pane: str) -> str:
+    """Extract the text currently in the agent's input box from a captured pane.
+
+    Copilot draws a bordered box: a top border line starting with '╻', content
+    line(s), then a bottom border starting with '╹'. We return the content
+    between the LAST such top border and its bottom border. Falls back to the
+    last line containing the simple '❯' prompt glyph."""
+    lines = pane.splitlines()
+    tops = [i for i, l in enumerate(lines) if l.lstrip().startswith("╻")]
+    if tops:
+        content = []
+        for l in lines[tops[-1] + 1:]:
+            if l.lstrip().startswith("╹"):
+                break
+            content.append(l)
+        return " ".join(content)
+    prompts = [l for l in lines if "❯" in l]
+    return prompts[-1] if prompts else ""
+
+
 async def _default_runner(cmd: list[str]) -> None:
     proc = await asyncio.create_subprocess_exec(*cmd)
     await proc.wait()
@@ -110,30 +130,37 @@ class TmuxWakeup:
         if self._enter_delay:
             await asyncio.sleep(self._enter_delay)
         for attempt in range(1, self._max_attempts + 1):
+            # Copilot (an Ink TUI) only submits Enter when it believes it is
+            # focused. When the agent's window isn't the one you're looking at,
+            # it ignores the injected Enter. Sending a synthetic focus-in report
+            # (ESC [ I) right before Enter makes it accept the submit WITHOUT
+            # stealing your view. Verified on Ghostty + tmux.
+            await self._run(["tmux", "send-keys", "-t", self.pane, "-H",
+                             "1b", "5b", "49"])     # ESC [ I  = focus-in
+            await asyncio.sleep(0.15)
             await self._run(["tmux", "send-keys", "-t", self.pane, "Enter"])
             await asyncio.sleep(self._poll)
             still = await self._still_in_input(marker)
-            _log(f"  enter#{attempt} -> still_in_input={still}")
+            _log(f"  focus+enter#{attempt} -> still_in_input={still}")
             if not still:
                 _log("  SUBMITTED (input cleared)")
                 return
         _log("  GAVE UP after max attempts (text still in input box)")
 
     async def _still_in_input(self, marker: str) -> bool:
-        """True if the pane's input prompt (last line containing the prompt glyph)
-        still holds our text — i.e. it has not been submitted yet."""
+        """True if our text is still sitting in the pane's input box (not submitted).
+
+        Handles both Copilot's bordered box (╻▄..┃..╹▀) and the simple ❯ prompt:
+        the input *content* is what's between the last top-border and bottom-border,
+        or the last ❯ line. After submit, that content no longer holds the marker."""
         try:
             pane = await self._capture(self.pane)
         except Exception as e:
             _log(f"  capture FAILED: {e!r}")
             return False  # can't read the pane → stop retrying rather than spam
-        prompt_lines = [ln for ln in pane.splitlines() if "❯" in ln]  # ❯
-        if not prompt_lines:
-            _log("  capture: NO prompt-glyph line found (last3="
-                 f"{pane.splitlines()[-3:]!r})")
-            return False
-        _log(f"  capture last-prompt-line={prompt_lines[-1].strip()[:90]!r}")
-        return marker in prompt_lines[-1]
+        content = _input_box_content(pane)
+        _log(f"  input-box={content.strip()[:90]!r}")
+        return marker in content
 
 
 def build_wakeup(kind: str, repo: str = "owner/repo", target: str | None = None):
