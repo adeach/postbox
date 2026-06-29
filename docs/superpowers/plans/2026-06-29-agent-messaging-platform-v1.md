@@ -1295,18 +1295,32 @@ This task adds no new production code — it proves the SSE endpoint end-to-end 
 import asyncio
 import json
 import pytest
-from httpx import ASGITransport, AsyncClient
+import uvicorn
+from httpx import AsyncClient
 from httpx_sse import aconnect_sse
 from courier.api import create_app
 
 
 @pytest.fixture
 async def app_client(tmp_path):
+    # httpx ASGITransport buffers the whole response (awaits the ASGI app to
+    # completion before returning), so it can NEVER stream an unbounded SSE
+    # endpoint — the tests would hang. Run the app under a real in-process
+    # uvicorn server on an ephemeral port so the socket actually streams.
     app = create_app(str(tmp_path / "data"))
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://t") as c:
+    config = uvicorn.Config(app, host="127.0.0.1", port=0,
+                            log_level="warning", lifespan="on")
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    try:
+        while not server.started:
+            await asyncio.sleep(0.01)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        async with AsyncClient(base_url=f"http://127.0.0.1:{port}") as c:
             yield app, c
+    finally:
+        server.should_exit = True
+        await task
 
 
 async def _reg(c, name, addr):
