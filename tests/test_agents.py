@@ -1,6 +1,6 @@
 import pytest
 from courier.agents import AgentService
-from courier.models import RegisterAgent
+from courier.models import RegisterAgent, Wakeup
 
 
 async def test_register_returns_token_and_lists_in_directory(db):
@@ -28,10 +28,6 @@ async def test_resolve_token(db):
     agent = await svc.resolve_token(res.token)
     assert agent is not None and agent.address == "a"
     assert await svc.resolve_token("bogus") is None
-
-
-import pytest
-from courier.models import Wakeup
 
 
 async def test_register_defaults_name_and_stores_wakeup(db):
