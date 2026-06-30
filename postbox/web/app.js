@@ -2,6 +2,7 @@ const API = "";  // same origin
 const palette = ["#2e8bba","#d9633b","#6b5bd2","#8a4fc4","#2f8f63","#b5495b","#3d7a8c","#9a6a2f"];
 const colorFor = a => palette[[...a].reduce((h,c)=>h+c.charCodeAt(0),0) % palette.length];
 const initials = n => n.replace(/[^a-z0-9]/gi,'').slice(0,2).toUpperCase();
+// escapes for HTML *text* content only — do NOT use the result inside an HTML attribute (no quote escaping)
 const esc = s => (s||"").replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
 
 let AGENTS = [];                    // [{address,name,status,...}]
@@ -91,7 +92,7 @@ async function selectThread(tid){
   msgs.scrollTop = msgs.scrollHeight;
   _lastIds[tid] = d.messages.length ? d.messages[d.messages.length - 1].id : null;  // for in_reply_to → reply stays in this thread
   renderSide();
-  if(!current.startsWith("all")) $("cinput").focus();
+  if(current!=="all") $("cinput").focus();
 }
 
 async function setIdentity(idn){

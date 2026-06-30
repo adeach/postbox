@@ -117,3 +117,21 @@ async def test_stream_all_replays_then_lives(db):
     await bus.publish(live)
     await asyncio.wait_for(task, timeout=2)
     assert [e.id for e in events] == [missed.id, live.id]
+
+
+async def test_stream_all_reconnect_replays_missed_once(db):
+    """Firehose reconnect: with Last-Event-ID set, replay only events after it,
+    exactly once (no drop, no dup) — the observer SSE relies on this."""
+    bus = EventBus(db)
+    e1 = await bus.append("a1", "t", {"n": 1})
+    e2 = await bus.append("a2", "t", {"n": 2})   # happened while "disconnected"
+    got = []
+    agen = bus.stream_all(last_event_id=e1.id)    # reconnect after e1
+    got.append(await agen.__anext__())             # replays e2
+    # also publish e2 live; must be deduped (id <= replayed_max), not re-yielded
+    await bus.publish(e2)
+    e3 = await bus.append("a1", "t", {"n": 3})
+    await bus.publish(e3)
+    got.append(await agen.__anext__())             # skips the dup e2, yields e3
+    await agen.aclose()
+    assert [e.id for e in got] == [e2.id, e3.id]
