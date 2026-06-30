@@ -1,7 +1,9 @@
+import json
+
 from postbox.agents import AgentService
 from postbox.db import Database
 from postbox.messages import MessageService
-from postbox.models import (AgentFull, CreateIdentity, MessageView, RegisterAgent,
+from postbox.models import (AgentFull, MessageView, RegisterAgent,
                             SendMessage, ThreadDetail, ThreadSummary)
 
 
@@ -18,7 +20,6 @@ class ObserverService:
         rows = await self.db.fetchall(
             "SELECT id,name,address,profile,status FROM agents ORDER BY "
             "status='offline', address")
-        import json
         return [AgentFull(id=r[0], name=r[1], address=r[2],
                           profile=json.loads(r[3]) if r[3] else None, status=r[4])
                 for r in rows]
