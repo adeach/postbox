@@ -17,7 +17,8 @@ const j = async (u, o) => { const r = await fetch(API+u, o); if(!r.ok) throw new
 
 async function loadAgents(){ AGENTS = await j("/observer/agents"); }
 function agentByAddr(a){ return AGENTS.find(x=>x.address===a) || {address:a,name:a,status:"offline"}; }
-function isOnline(a){ return agentByAddr(a).status !== "offline"; }
+function isHuman(a){ return !!agentByAddr(a).profile?.human; }
+function isOnline(a){ return !isHuman(a) && agentByAddr(a).status === "online"; }
 
 function totalUnread(t){ return Object.values(t.unread||{}).reduce((a,b)=>a+b,0); }
 function unreadForView(t){ return current==="all" ? totalUnread(t) : (t.unread?.[current]||0); }
@@ -35,18 +36,21 @@ function setStatus(msg, kind){
 
 function renderMenu(){
   const m = $("idMenu"); m.innerHTML = '<div class="mh">Open as</div>';
-  const opt = (addr,name,globe,online,you,unread)=>{
+  // human = render a "person" chip (no presence dot); agent = avatar with live dot
+  const opt = (addr,name,globe,online,human,unread)=>{
     const o = document.createElement("div"); o.className="opt";
     const col = globe ? "#5a2b5c" : colorFor(addr);
-    o.innerHTML = `<span class="av ${globe?'globe':''}" style="background:${col}">${globe?'🌐':initials(name)}${globe?'':`<span class="pres ${online?'':'off'}"></span>`}</span>
-      <span class="nm">${esc(name)}</span>${you?'<span class="you">you</span>':''}
+    const av = globe ? `<span class="av globe" style="background:${col}">🌐</span>`
+      : human ? `<span class="av person" style="background:${col}">${initials(name)}</span>`
+      : `<span class="av" style="background:${col}">${initials(name)}<span class="pres ${online?'':'off'}"></span></span>`;
+    o.innerHTML = `${av}<span class="nm">${esc(name)}</span>${human?'<span class="you">you</span>':''}
       ${unread?`<span class="badge">${unread}</span>`:''}${(globe?'all':addr)===current?'<span class="ck">✓</span>':''}`;
     o.onclick = e=>{ e.stopPropagation(); setIdentity(globe?'all':addr); closeMenu(); };
     m.appendChild(o);
   };
   opt(null,"All activity",true,true,false,0);
   const sep = document.createElement("div"); sep.className="sepm"; m.appendChild(sep);
-  AGENTS.forEach(a=> opt(a.address, a.name, false, a.status!=="offline", !!a.profile?.human, 0));
+  AGENTS.forEach(a=> opt(a.address, a.name, false, a.status==="online", !!a.profile?.human, 0));
   const add = document.createElement("div"); add.className="opt"; add.style.color="#1264a3";
   add.innerHTML = '<span class="av" style="background:#e8eef7;color:#1264a3">＋</span><span class="nm">New identity…</span>';
   add.onclick = async e=>{ e.stopPropagation(); const name = prompt("New identity name (e.g. your name):"); if(name){ const r = await j("/observer/identity",{method:"POST",headers:{'content-type':'application/json'},body:JSON.stringify({name})}); await loadAgents(); setIdentity(r.address); } closeMenu(); };
@@ -81,14 +85,20 @@ function renderSide(){
   });
 }
 
-// delivery/read receipt for a message, from its recipients' read state
+// Honest delivery/read receipt. Read = recipient opened it. Otherwise per recipient:
+// online agent -> Delivered (a live session has it); offline agent -> Queued (delivers
+// when they connect); human -> Sent (no agent session; waits until they open Postbox).
 function receiptHtml(m){
   if(!m.to || !m.to.length) return "";
   const unread = m.to.filter(r=> !(m.read_by||[]).includes(r));
-  if(unread.length === 0) return `<span class="rcpt read" title="Read by recipient">✓✓ Read</span>`;
-  const offline = unread.filter(r=> !isOnline(r));
-  const note = offline.length ? ` · ${esc(offline.join(", "))} offline` : "";
-  return `<span class="rcpt" title="Delivered to inbox; not read yet">✓ Delivered${note}</span>`;
+  if(unread.length === 0) return `<span class="rcpt read" title="Opened by the recipient">✓✓ Read</span>`;
+  let anyPending = false;
+  const parts = unread.map(r=>{
+    if(isHuman(r)){ anyPending = true; return `<span class="dot off"></span>◷ Sent · waiting for ${esc(r)} to open`; }
+    if(isOnline(r)) return `<span class="dot on"></span>✓ Delivered`;
+    anyPending = true; return `<span class="dot off"></span>◷ Queued · delivers when ${esc(r)} connects`;
+  });
+  return `<span class="rcpt ${anyPending?'queued':''}" title="Live delivery status">${parts.join(" · ")}</span>`;
 }
 
 async function selectThread(tid){
@@ -101,8 +111,10 @@ async function selectThread(tid){
   const ot = $("obsTag"); ot.style.display = obs?"inline-block":"none"; ot.textContent = current==="all"?"all activity":"observing";
   const avs = $("mAvs"); avs.innerHTML = "";
   d.members.forEach(mm=>{
-    const x=document.createElement("div"); x.className="a"; x.style.background=colorFor(mm); x.title=mm+(isOnline(mm)?" (online)":" (offline)");
-    x.innerHTML = initials(mm)+`<span class="pres ${isOnline(mm)?'':'off'}"></span>`;
+    const human = isHuman(mm);
+    const x=document.createElement("div"); x.className="a"+(human?" person":""); x.style.background=colorFor(mm);
+    x.title = mm + (human ? " (person)" : (isOnline(mm)?" (online)":" (offline)"));
+    x.innerHTML = initials(mm) + (human ? "" : `<span class="pres ${isOnline(mm)?'':'off'}"></span>`);
     avs.appendChild(x);
   });
   const msgs = $("msgs"); msgs.innerHTML = '<div class="daydiv"><span>Conversation</span></div>';
@@ -120,6 +132,15 @@ async function selectThread(tid){
   _lastIds[tid] = d.messages.length ? d.messages[d.messages.length - 1].id : null;  // in_reply_to → reply stays in this thread
   renderSide();
   if(current!=="all") $("cinput").focus();
+  // auto-mark-read like email — ONLY when opening as yourself (a human participant);
+  // observing as an agent or in "all activity" must never touch read state.
+  if(current!=="all" && isHuman(current) && d.members.includes(current)){
+    try{
+      const res = await j("/observer/read", {method:"POST", headers:{'content-type':'application/json'},
+        body: JSON.stringify({as: current, thread_id: tid})});
+      if(res && res.marked){ await loadThreads(); renderSide(); }
+    }catch(e){ /* non-fatal */ }
+  }
 }
 
 function openCompose(){
@@ -129,14 +150,15 @@ function openCompose(){
   $("mSub").textContent = "from "+current;
   $("obsTag").style.display = "none"; $("mAvs").innerHTML = "";
   const others = AGENTS.filter(a=> a.address !== current);
-  const opts = others.map(a=>`<option value="${a.address}">${esc(a.name)} ${a.status==="offline"?"— offline":"— online"}</option>`).join("");
+  const label = a => a.profile?.human ? "— person" : (a.status==="online" ? "— online" : "— offline");
+  const opts = others.map(a=>`<option value="${a.address}">${esc(a.name)} ${label(a)}</option>`).join("");
   $("msgs").innerHTML = `<div class="composeform">
     <label>To</label>
     <select id="cTo">${opts || '<option value="">(no other agents yet)</option>'}</select>
     <label>Subject <span class="opt">(optional)</span></label>
     <input id="cSubj" placeholder="e.g. quick question" autocomplete="off">
-    <div class="hint">Type your message in the box below and press <b>Enter</b> to send.
-    The recipient is poked in real time; you'll see <b>✓ Delivered</b> the instant it's in their inbox, then <b>✓✓ Read</b> once they open it.</div>
+    <div class="hint">Type your message below and press <b>Enter</b> to send.
+    An <b>online agent</b> is woken in real time (<b>✓ Delivered</b>); an <b>offline agent</b> is <b>◷ Queued</b> until it connects; a <b>person</b> sees it (<b>◷ Sent</b>) when they open Postbox. It turns <b>✓✓ Read</b> once opened.</div>
   </div>`;
   $("cinput").value = ""; $("cinput").disabled = false;
   $("cinput").placeholder = "Write your message — Enter to send…";
@@ -171,7 +193,10 @@ async function doSend(){
     composeMode = false;
     await loadThreads();
     await selectThread(res.thread_id);
-    setStatus(`✓ Delivered to ${to}${isOnline(to)?"" : " (offline — will see when online)"}`, "ok");
+    const note = isHuman(to) ? `◷ Sent to ${to} — they'll see it when they open Postbox`
+      : isOnline(to) ? `✓ Delivered to ${to}`
+      : `◷ Queued for ${to} — delivers when they connect`;
+    setStatus(note, "ok");
   }catch(e){
     setStatus("⚠ Failed to send — "+String(e.message||e).slice(0,80), "err");
     input.value = txt;  // restore so it isn't lost
