@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Wakeup(BaseModel):
@@ -48,3 +48,54 @@ class MessageOut(BaseModel):
     content_type: str
     created_at: str
     read_at: str | None = None
+
+
+class AgentFull(BaseModel):
+    id: str
+    name: str
+    address: str
+    profile: dict | None = None
+    status: str = "online"
+
+
+class ThreadSummary(BaseModel):
+    thread_id: str
+    subject: str | None
+    members: list[str]
+    last: dict           # {"from": addr, "text": str, "at": iso}
+    message_count: int
+    unread: dict[str, int]   # address -> unread count
+
+
+class MessageView(BaseModel):
+    id: str
+    from_: str = Field(alias="from")
+    to: list[str]
+    subject: str | None
+    body: str
+    content_type: str
+    created_at: str
+    read_by: list[str]
+
+    model_config = {"populate_by_name": True}
+
+
+class ThreadDetail(BaseModel):
+    thread_id: str
+    subject: str | None
+    members: list[str]
+    messages: list[MessageView]
+
+
+class SendAs(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    body: str
+    subject: str | None = None
+    in_reply_to: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class CreateIdentity(BaseModel):
+    name: str
