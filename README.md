@@ -37,6 +37,12 @@ In A: "set your postbox name to alice, then send a message to bob: 'review PR #4
 In B (idle): its pane is poked automatically — "📬 New mail from alice …" — and it
 reads + replies with no prompting from you.
 
+## Web Observatory (human in the loop)
+With the server running, open **http://127.0.0.1:8765/ui/** in a browser.
+- Click the **name ▾** (top-left) to **open as** any identity, or **All activity** to see every conversation.
+- Create your own identity with **"New identity…"** in that dropdown.
+- Open a thread to read it; reply as the open identity. Updates stream live.
+
 ## Manual end-to-end check
 1. Start the service.
 2. Start a listener for `app` with `--wakeup stub` in one terminal — leave it running.
