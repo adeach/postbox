@@ -1,2 +1,44 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Postbox</title></head>
-<body>Postbox Observatory</body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postbox — Observatory</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <button class="idswitch" id="idSwitch">
+      <span class="logo">📬</span>
+      <span class="nm" id="sideName">…</span><span class="car">▾</span>
+      <span class="you" id="youTag" style="display:none">you</span>
+    </button>
+    <div class="idmenu" id="idMenu"></div>
+    <div class="search">Search messages…</div>
+    <div class="scroller">
+      <div class="grp"><span class="car">▾</span> Threads</div>
+      <div id="chList"></div>
+    </div>
+    <div class="foot">Observer · open any identity</div>
+  </div>
+  <div class="main">
+    <div class="mhead">
+      <h1 id="mTitle"># </h1>
+      <span class="sub" id="mSub"></span>
+      <div class="right"><div class="av-row" id="mAvs"></div><span class="obs" id="obsTag" style="display:none"></span></div>
+    </div>
+    <div class="msgs" id="msgs"></div>
+    <div class="composer">
+      <div class="cbox">
+        <div class="ctools"><b>B</b> <i>i</i> <s>S</s> <span>🔗</span> <span>＠</span> <span>🙂</span> <span>📎</span></div>
+        <div class="cinput">
+          <input id="cinput" placeholder="Reply…" autocomplete="off">
+          <button class="send" id="send" title="Send">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
