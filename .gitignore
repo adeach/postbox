@@ -8,3 +8,4 @@ venv/
 data/
 .env
 *.egg-info/
+mockups/*.png

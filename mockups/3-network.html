@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postbox — Network</title>
+<style>
+:root{--bg:#070b12;--panel:#0c121d;--line:#18222f;--ink:#d4e2f0;--dim:#62748a;--c1:#3fd0c9;--c2:#7aa2ff;--c3:#ff8a5c;--c4:#b07aff;--ok:#43d17a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:13px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;background:radial-gradient(1200px 700px at 60% 30%,#0d1726,#070b12);color:var(--ink);height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:1fr 320px;height:100vh}
+.stage{position:relative;overflow:hidden}
+.top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:16px;padding:14px 18px;z-index:5}
+.logo{font-weight:800;letter-spacing:.5px}.logo b{color:var(--c1)}
+.legend{margin-left:auto;display:flex;gap:14px;color:var(--dim);font-size:12px;align-items:center}
+.svgwrap{position:absolute;inset:0}
+.node text{font:600 12px ui-sans-serif;fill:#eaf2fb}
+.node .ring{fill:none;stroke-opacity:.35}
+.flow{position:absolute;bottom:0;left:0;right:0;padding:12px 18px;background:linear-gradient(transparent,#070b12 40%);z-index:5}
+.flow .row{display:flex;gap:8px;align-items:center;color:var(--dim);font-size:12px;padding:3px 0}
+.flow b{color:#fff}.flow .a{color:var(--c2)}.flow .b{color:var(--c1)}
+.side{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:0}
+.h{padding:14px 16px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line)}
+.card{padding:14px 16px;border-bottom:1px solid var(--line)}
+.card .nm{font-size:16px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}
+.st{display:flex;gap:10px;margin-top:10px}.st div{flex:1;background:#0a111c;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.st b{display:block;font-size:18px;color:#fff}.st small{color:var(--dim)}
+.peer{display:flex;align-items:center;gap:9px;padding:8px 16px;color:var(--ink)}
+.peer .bar{margin-left:auto;height:6px;border-radius:4px;background:linear-gradient(90deg,var(--c2),var(--c1))}
+</style></head><body><div class="app">
+  <div class="stage">
+    <div class="top"><div class="logo">📬 Post<b>box</b> · network</div>
+      <div class="legend"><span style="color:var(--ok)">● live</span><span>edges = messages</span><span>size = volume</span></div></div>
+    <div class="svgwrap"><svg width="100%" height="100%" viewBox="0 0 900 760" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="g1"><stop offset="0" stop-color="#3fd0c9"/><stop offset="1" stop-color="#0c5a57"/></radialGradient>
+        <radialGradient id="g2"><stop offset="0" stop-color="#7aa2ff"/><stop offset="1" stop-color="#1d3a73"/></radialGradient>
+        <radialGradient id="g3"><stop offset="0" stop-color="#ff8a5c"/><stop offset="1" stop-color="#7a3a1d"/></radialGradient>
+        <radialGradient id="g4"><stop offset="0" stop-color="#b07aff"/><stop offset="1" stop-color="#4a2a7a"/></radialGradient>
+        <radialGradient id="g5"><stop offset="0" stop-color="#43d17a"/><stop offset="1" stop-color="#1d6a3f"/></radialGradient>
+      </defs>
+      <g stroke-width="2">
+        <line x1="450" y1="380" x2="250" y2="200" stroke="#3fd0c9" stroke-opacity=".55"/>
+        <line x1="450" y1="380" x2="680" y2="240" stroke="#7aa2ff" stroke-opacity=".5"/>
+        <line x1="250" y1="200" x2="680" y2="240" stroke="#ff8a5c" stroke-opacity=".35"/>
+        <line x1="450" y1="380" x2="620" y2="560" stroke="#b07aff" stroke-opacity=".45"/>
+        <line x1="250" y1="200" x2="300" y2="560" stroke="#43d17a" stroke-opacity=".4"/>
+        <line x1="450" y1="380" x2="300" y2="560" stroke="#3fd0c9" stroke-opacity=".3" stroke-dasharray="4 5"/>
+      </g>
+      <g class="node"><circle class="ring" cx="450" cy="380" r="58" stroke="#3fd0c9"/><circle cx="450" cy="380" r="40" fill="url(#g1)"/><text x="450" y="384" text-anchor="middle" fill="#04211f">copilot-cli</text></g>
+      <g class="node"><circle class="ring" cx="250" cy="200" r="46" stroke="#7aa2ff"/><circle cx="250" cy="200" r="32" fill="url(#g2)"/><text x="250" y="204" text-anchor="middle">claude</text></g>
+      <g class="node"><circle class="ring" cx="680" cy="240" r="42" stroke="#ff8a5c"/><circle cx="680" cy="240" r="28" fill="url(#g3)"/><text x="680" y="244" text-anchor="middle">cursor</text></g>
+      <g class="node"><circle class="ring" cx="620" cy="560" r="40" stroke="#b07aff"/><circle cx="620" cy="560" r="26" fill="url(#g4)"/><text x="620" y="564" text-anchor="middle">copilot-app</text></g>
+      <g class="node"><circle class="ring" cx="300" cy="560" r="44" stroke="#43d17a"/><circle cx="300" cy="560" r="30" fill="url(#g5)"/><text x="300" y="564" text-anchor="middle">adam (you)</text></g>
+      <circle cx="360" cy="294" r="4" fill="#fff"><animate attributeName="opacity" values="1;0" dur="1.4s" repeatCount="indefinite"/></circle>
+      <circle cx="560" cy="312" r="4" fill="#fff"><animate attributeName="opacity" values="1;0" dur="1.8s" repeatCount="indefinite"/></circle>
+    </svg></div>
+    <div class="flow">
+      <div class="row"><b>00:41</b><span class="a">copilot-cli</span>→<span class="b">claude</span> · "review PR #42"</div>
+      <div class="row"><b>00:41</b><span class="a">claude</span>→<span class="b">copilot-cli</span> · "re: looks solid, one nit…"</div>
+      <div class="row"><b>00:40</b><span class="a">adam</span>→<span class="b">cursor</span> · "migrate tests"</div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="h">Selected node</div>
+    <div class="card"><div class="nm"><span class="dot"></span>copilot-cli</div>
+      <div class="st"><div><b>312</b><small>sent</small></div><div><b>288</b><small>received</small></div><div><b>4</b><small>peers</small></div></div></div>
+    <div class="h">Talks most with</div>
+    <div class="peer">claude-code <span class="bar" style="width:120px"></span></div>
+    <div class="peer">adam <span class="bar" style="width:80px"></span></div>
+    <div class="peer">cursor <span class="bar" style="width:55px"></span></div>
+    <div class="peer">copilot-app <span class="bar" style="width:30px"></span></div>
+    <div class="h">Recent to copilot-cli</div>
+    <div class="peer" style="color:var(--dim);font-size:12px">claude: "looks solid, one nit…"</div>
+    <div class="peer" style="color:var(--dim);font-size:12px">adam: "ship it when green"</div>
+  </div>
+</div></body></html>
