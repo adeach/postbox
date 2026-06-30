@@ -80,3 +80,58 @@ async def test_stream_drops_already_replayed_live_event(db):
     nxt = await agen.__anext__()                       # skips the dup, yields the newer one
     assert nxt.id == newer.id
     await agen.aclose()
+
+
+async def test_firehose_receives_all_agents(db):
+    bus = EventBus(db)
+    q = bus.subscribe_all()
+    e1 = await bus.append("a1", "message.received", {"n": 1})
+    await bus.publish(e1)
+    e2 = await bus.append("a2", "message.received", {"n": 2})
+    await bus.publish(e2)
+    got = [await asyncio.wait_for(q.get(), 1), await asyncio.wait_for(q.get(), 1)]
+    assert [e.agent_id for e in got] == ["a1", "a2"]   # firehose = ALL agents
+    bus.unsubscribe_all(q)
+
+
+async def test_load_all_after(db):
+    bus = EventBus(db)
+    e1 = await bus.append("a1", "t", {})
+    e2 = await bus.append("a2", "t", {})
+    got = await bus.load_all_after(e1.id)
+    assert [e.id for e in got] == [e2.id]
+
+
+async def test_stream_all_replays_then_lives(db):
+    bus = EventBus(db)
+    missed = await bus.append("a1", "t", {"n": 1})  # before connect
+    events = []
+    async def consume():
+        async for ev in bus.stream_all(last_event_id=None):
+            events.append(ev)
+            if len(events) == 2:
+                break
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0.05)
+    live = await bus.append("a2", "t", {"n": 2})
+    await bus.publish(live)
+    await asyncio.wait_for(task, timeout=2)
+    assert [e.id for e in events] == [missed.id, live.id]
+
+
+async def test_stream_all_reconnect_replays_missed_once(db):
+    """Firehose reconnect: with Last-Event-ID set, replay only events after it,
+    exactly once (no drop, no dup) — the observer SSE relies on this."""
+    bus = EventBus(db)
+    e1 = await bus.append("a1", "t", {"n": 1})
+    e2 = await bus.append("a2", "t", {"n": 2})   # happened while "disconnected"
+    got = []
+    agen = bus.stream_all(last_event_id=e1.id)    # reconnect after e1
+    got.append(await agen.__anext__())             # replays e2
+    # also publish e2 live; must be deduped (id <= replayed_max), not re-yielded
+    await bus.publish(e2)
+    e3 = await bus.append("a1", "t", {"n": 3})
+    await bus.publish(e3)
+    got.append(await agen.__anext__())             # skips the dup e2, yields e3
+    await agen.aclose()
+    assert [e.id for e in got] == [e2.id, e3.id]

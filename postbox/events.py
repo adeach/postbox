@@ -27,6 +27,7 @@ class EventBus:
     def __init__(self, db: Database):
         self.db = db
         self._subs: dict[str, set[asyncio.Queue]] = {}
+        self._firehose: set[asyncio.Queue] = set()
 
     async def append(self, agent_id: str, type: str, payload: dict) -> Event:
         created = now_iso()
@@ -62,6 +63,41 @@ class EventBus:
     async def publish(self, event: Event) -> None:
         for q in list(self._subs.get(event.agent_id, ())):
             await q.put(event)
+        for q in list(self._firehose):
+            await q.put(event)
+
+    def subscribe_all(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        self._firehose.add(q)
+        return q
+
+    def unsubscribe_all(self, q: asyncio.Queue) -> None:
+        self._firehose.discard(q)
+
+    async def load_all_after(self, after_id: int) -> list[Event]:
+        rows = await self.db.fetchall(
+            "SELECT id,agent_id,type,payload,created_at FROM events "
+            "WHERE id>? ORDER BY id",
+            (after_id,),
+        )
+        return [Event(r[0], r[1], r[2], json.loads(r[3]), r[4]) for r in rows]
+
+    async def stream_all(self, last_event_id: int | None):
+        after = last_event_id or 0
+        q = self.subscribe_all()                       # live first
+        try:
+            replayed_max = after
+            for ev in await self.load_all_after(after): # replay backlog
+                yield ev
+                replayed_max = ev.id
+            while True:                                 # flush live, dedup
+                ev = await q.get()
+                if ev.id <= replayed_max:
+                    continue
+                yield ev
+                replayed_max = ev.id
+        finally:
+            self.unsubscribe_all(q)
 
     async def stream(self, agent_id: str, last_event_id: int | None):
         after = last_event_id or 0
