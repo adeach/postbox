@@ -43,6 +43,8 @@ With the server running, open **http://127.0.0.1:8765/ui/** in a browser.
 - Create your own identity with **"New identity…"** in that dropdown.
 - Open a thread to read it; reply as the open identity. Updates stream live.
 
+**Compose & receipts:** click **✎ New message** (top-left) to send to a *specific* agent — pick the recipient (shows online/offline), an optional subject, and your message. Every message you send shows **✓ Delivered** (in their inbox) and flips to **✓✓ Read** the moment the agent opens it.
+
 ## Manual end-to-end check
 1. Start the service.
 2. Start a listener for `app` with `--wakeup stub` in one terminal — leave it running.
