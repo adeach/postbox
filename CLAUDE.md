@@ -6,7 +6,9 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `docs/superpowers/specs/2026-06-29-agent-messaging-platform-design.md` — approved v1 design spec (architecture, data model, API, scope, testing).
 - `docs/superpowers/specs/2026-06-29-postbox-v2-session-identity-tmux-wakeup-design.md` — v2 design: per-session auto-identity + real-time tmux wakeup (for review).
 - `docs/superpowers/specs/2026-06-30-postbox-observatory-web-ui-design.md` — approved design: Slack-style web Observatory (open-as-any-identity inbox + all-activity + reply-as), backed by observer/global-read + send-as API.
-- `mockups/` — web UI design mockups; `8-slack-dropdown.html` is the approved interactive prototype.
+- `docs/superpowers/specs/2026-06-30-postbox-correctness-audit.md` — adversarial audit: 6 Critical / 8 High fundamental correctness bugs (presence latch, no DB isolation, "Delivered" decoupled from liveness, group-reply misroute, stored XSS); 3 root causes + remediation tiers.
+- `docs/superpowers/specs/2026-06-30-postbox-presence-delivery-honest-model-design.md` — approved design: live-derived presence (no stored latch/heartbeat), 3-state delivery (Read/Delivered/Queued + human Sent), human read path (`POST /observer/read`, auto-on-open), name reuse vs online holders. Fixes audit Tier 2.
+- `mockups/` — web UI design mockups; `8-slack-dropdown.html` is the approved interactive prototype; `9-honest-receipts.html` shows the Tier-2 receipt states + person-vs-agent presence.
 - `docs/superpowers/plans/2026-06-29-agent-messaging-platform-v1.md` — v1 implementation plan (Tasks 0–11).
 - `README.md` — run/MCP-config/listener/manual-demo instructions.
 - `pyproject.toml` — project metadata + deps.

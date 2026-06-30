@@ -11,7 +11,7 @@ from postbox.events import EventBus
 from postbox.config import load_settings
 from postbox.messages import MessageService
 from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
-from postbox.models import CreateIdentity, SendAs
+from postbox.models import CreateIdentity, ReadAs, SendAs
 from postbox.observer import ObserverService
 import json
 
@@ -26,7 +26,8 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         app.state.agents = AgentService(db)
         app.state.bus = EventBus(db)
         app.state.messages = MessageService(db, app.state.agents, app.state.bus)
-        app.state.observer = ObserverService(db, app.state.agents, app.state.messages)
+        app.state.observer = ObserverService(
+            db, app.state.agents, app.state.messages, app.state.bus)
         yield
         await db.close()
 
@@ -52,7 +53,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
 
     @app.get("/agents", response_model=list[AgentOut])
     async def directory():
-        return await app.state.agents.directory()
+        return await app.state.agents.directory(app.state.bus.online_ids())
 
     @app.patch("/agents/self", response_model=AgentOut)
     async def set_name(payload: SetName, agent: AgentOut = Depends(current_agent)):
@@ -119,6 +120,17 @@ def create_app(data_dir: str | None = None) -> FastAPI:
                 payload.subject, payload.in_reply_to)
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    @app.post("/observer/read")
+    async def observer_read(payload: ReadAs):
+        try:
+            marked = await app.state.observer.mark_thread_read(
+                payload.as_, payload.thread_id)
+            return {"marked": marked}
+        except PermissionError as e:
+            raise HTTPException(403, str(e))
+        except ValueError as e:
+            raise HTTPException(404, str(e))
 
     @app.get("/observer/events")
     async def observer_events(request: Request, last_event_id: int | None = None):

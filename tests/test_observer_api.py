@@ -64,6 +64,27 @@ async def test_send_as_unknown_sender_400(client):
     assert r.status_code == 400
 
 
+async def test_observer_read_marks_human_and_rejects_agent(client):
+    a = await _reg(client, "alice")
+    ah = {"Authorization": f"Bearer {a['token']}"}
+    adam = (await client.post("/observer/identity", json={"name": "adam"})).json()
+    # alice messages the human adam
+    r = await client.post("/messages", headers=ah,
+                          json={"to": "adam", "body": "for you", "subject": "s"})
+    tid = r.json()["thread_id"]
+    # before: adam's message is unread
+    d0 = (await client.get(f"/observer/threads/{tid}")).json()
+    assert d0["messages"][0]["read_by"] == []
+    # human opens it -> marked read
+    rd = await client.post("/observer/read", json={"as": "adam", "thread_id": tid})
+    assert rd.status_code == 200 and rd.json()["marked"] == 1
+    d1 = (await client.get(f"/observer/threads/{tid}")).json()
+    assert d1["messages"][0]["read_by"] == ["adam"]
+    # a real agent may NOT mark read via the observer (would corrupt its state)
+    bad = await client.post("/observer/read", json={"as": "alice", "thread_id": tid})
+    assert bad.status_code == 403
+
+
 async def test_ui_served(client):
     r = await client.get("/ui/")
     assert r.status_code == 200 and "Postbox" in r.text

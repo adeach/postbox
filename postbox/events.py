@@ -60,6 +60,15 @@ class EventBus:
             if not subs:
                 self._subs.pop(agent_id, None)
 
+    def is_online(self, agent_id: str) -> bool:
+        """Live presence: an agent is online iff it holds >=1 live SSE subscription.
+        Reference-counted for free (set of queues); empty after a restart, so no
+        ghost-online and no heartbeat/TTL needed."""
+        return bool(self._subs.get(agent_id))
+
+    def online_ids(self) -> set[str]:
+        return {aid for aid, qs in self._subs.items() if qs}
+
     async def publish(self, event: Event) -> None:
         for q in list(self._subs.get(event.agent_id, ())):
             await q.put(event)

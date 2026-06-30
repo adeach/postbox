@@ -1,7 +1,9 @@
 import json
 
 from postbox.agents import AgentService
+from postbox.auth import now_iso
 from postbox.db import Database
+from postbox.events import EventBus
 from postbox.messages import MessageService
 from postbox.models import (AgentFull, MessageView, RegisterAgent,
                             SendMessage, ThreadDetail, ThreadSummary)
@@ -11,18 +13,26 @@ class ObserverService:
     """Global, identity-agnostic reads + send-as for the web Observatory.
     Reuses AgentService/MessageService; adds unfiltered (all-agents) queries."""
 
-    def __init__(self, db: Database, agents: AgentService, messages: MessageService):
+    def __init__(self, db: Database, agents: AgentService,
+                 messages: MessageService, bus: EventBus):
         self.db = db
         self.agents = agents
         self.messages = messages
+        self.bus = bus
 
     async def agents_all(self) -> list[AgentFull]:
+        """God view: every identity, with TRUTHFUL live presence (from the bus, not
+        the stored `status` latch). Online agents first, then by address."""
+        online = self.bus.online_ids()
         rows = await self.db.fetchall(
-            "SELECT id,name,address,profile,status FROM agents ORDER BY "
-            "status='offline', address")
-        return [AgentFull(id=r[0], name=r[1], address=r[2],
-                          profile=json.loads(r[3]) if r[3] else None, status=r[4])
-                for r in rows]
+            "SELECT id,name,address,profile FROM agents "
+            "WHERE status<>'deregistered' ORDER BY address")
+        items = [AgentFull(id=r[0], name=r[1], address=r[2],
+                           profile=json.loads(r[3]) if r[3] else None,
+                           status="online" if r[0] in online else "offline")
+                 for r in rows]
+        items.sort(key=lambda a: (a.status != "online", a.address))
+        return items
 
     async def _thread_ids(self, address: str | None) -> list[str]:
         if address is None:
@@ -93,10 +103,36 @@ class ObserverService:
                             members=sorted(members), messages=messages)
 
     async def create_identity(self, name: str) -> AgentFull:
-        # mark as human so the UI tags it "you"; persists (no MCP session to deregister)
+        # mark as human so the UI renders a "person" (no presence dot) and grants the
+        # web read path. A human has no live SSE session, so it is offline by liveness.
         res = await self.agents.register(RegisterAgent(name=name, profile={"human": True}))
         return AgentFull(id=res.id, name=res.name, address=res.address,
-                         profile=res.profile, status="online")
+                         profile=res.profile, status="offline")
+
+    async def mark_thread_read(self, address: str, thread_id: str) -> int:
+        """Mark a HUMAN's own unread messages in a thread as read, and emit
+        message.read so the senders' UIs/agents update live. Guard: only human
+        identities may mark via the observer — observing a thread AS a real agent must
+        never touch that agent's read state."""
+        agent = await self.agents.get_by_address(address)
+        if agent is None:
+            raise ValueError(f"unknown identity: {address}")
+        if not (agent.profile or {}).get("human"):
+            raise PermissionError("only human identities can mark read via observer")
+        rows = await self.db.fetchall(
+            "SELECT r.message_id, m.sender_id FROM recipients r "
+            "JOIN messages m ON m.id=r.message_id "
+            "WHERE r.agent_id=? AND r.read_at IS NULL AND m.thread_id=?",
+            (agent.id, thread_id))
+        now = now_iso()
+        for message_id, sender_id in rows:
+            await self.db.execute(
+                "UPDATE recipients SET read_at=? WHERE message_id=? AND agent_id=?",
+                (now, message_id, agent.id))
+            ev = await self.bus.append(sender_id, "message.read",
+                                       {"message_id": message_id, "by": address})
+            await self.bus.publish(ev)
+        return len(rows)
 
     async def send_as(self, from_address: str, to: str, body: str,
                       subject: str | None = None, in_reply_to: str | None = None):

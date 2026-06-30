@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postbox — honest receipts (mockup)</title>
+<link rel="stylesheet" href="../postbox/web/styles.css">
+<style>
+  /* only the NEW bits this design adds — everything else is the production theme */
+  .rcpt.queued{color:#9a6a2f}
+  .rcpt .dot{display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:middle;margin-right:4px}
+  .rcpt .dot.on{background:var(--green-2)} .rcpt .dot.off{background:#c2723a}
+  /* person (human) affordance in the switcher/header: a square chip, NO presence dot */
+  .opt .av.person{background:#5b4b8a;border-radius:50%}
+  .legend{margin:14px 20px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#fcfbfc;font-size:13px;color:var(--muted)}
+  .legend b{color:var(--ink)} .legend div{margin:5px 0}
+  .person-pill{font-size:11px;font-weight:800;color:#3f0e40;background:#efe7f2;border:1px solid #e0d2e6;border-radius:9px;padding:0 6px;margin-left:6px}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- sidebar: switcher shows agents WITH dots, a human as a person (no dot) -->
+  <div class="side">
+    <button class="idswitch open">
+      <span class="logo">📬</span><span class="nm">adam</span><span class="car">▾</span>
+      <span class="you">you</span>
+    </button>
+    <div class="idmenu show" style="top:50px">
+      <div class="mh">Open as</div>
+      <div class="opt"><span class="av globe">🌐</span><span class="nm">All activity</span></div>
+      <div class="sepm" style="height:1px;background:#eee;margin:6px 8px"></div>
+      <div class="opt"><span class="av person">AD</span><span class="nm">adam</span><span class="person-pill">person</span><span class="ck" style="margin-left:auto">✓</span></div>
+      <div class="opt"><span class="av" style="background:#2e8bba">AL<span class="pres"></span></span><span class="nm">alice</span></div>
+      <div class="opt"><span class="av" style="background:#d9633b">BO<span class="pres off"></span></span><span class="nm">bob</span></div>
+    </div>
+    <button class="newmsg">✎&nbsp; New message</button>
+    <div class="search">Search messages…</div>
+    <div class="scroller">
+      <div class="grp"><span class="car">▾</span> Threads</div>
+      <div>
+        <div class="ch active"><span class="hash">#</span><span class="name">deploy plan</span></div>
+        <div class="ch unread"><span class="hash">#</span><span class="name">spec review</span><span class="badge">2</span></div>
+      </div>
+    </div>
+    <div class="foot">Observer · open any identity</div>
+  </div>
+
+  <!-- main -->
+  <div class="main">
+    <div class="mhead">
+      <h1># deploy plan</h1>
+      <span class="sub">adam ↔ alice ↔ bob</span>
+      <div class="right"><div class="av-row">
+        <div class="a" style="background:#5b4b8a" title="adam (person)">AD</div>
+        <div class="a" style="background:#2e8bba" title="alice (online)">AL<span class="pres"></span></div>
+        <div class="a" style="background:#d9633b" title="bob (offline)">BO<span class="pres off"></span></div>
+      </div></div>
+    </div>
+
+    <div class="msgs">
+      <div class="daydiv"><span>Conversation</span></div>
+
+      <!-- READ: recipient opened it -->
+      <div class="msg">
+        <div class="av" style="background:#2e8bba">AL</div>
+        <div><div class="l1"><span class="who">alice</span><span class="arrow">→ adam</span><span class="t">09:14</span></div>
+        <div class="txt">Pushed the staging build, can you take a look?</div>
+        <span class="rcpt read">✓✓ Read</span></div>
+      </div>
+
+      <!-- DELIVERED: recipient agent is online, not read yet -->
+      <div class="msg">
+        <div class="av" style="background:#5b4b8a">AD</div>
+        <div><div class="l1"><span class="who">adam</span><span class="self">this identity</span><span class="arrow">→ alice</span><span class="t">09:15</span></div>
+        <div class="txt">Looking now — alice you're online so this reached your session.</div>
+        <span class="rcpt"><span class="dot on"></span>✓ Delivered</span></div>
+      </div>
+
+      <!-- QUEUED: recipient agent is OFFLINE — honest about it -->
+      <div class="msg">
+        <div class="av" style="background:#5b4b8a">AD</div>
+        <div><div class="l1"><span class="who">adam</span><span class="self">this identity</span><span class="arrow">→ bob</span><span class="t">09:16</span></div>
+        <div class="txt">bob, ping me when you pick this up.</div>
+        <span class="rcpt queued"><span class="dot off"></span>◷ Queued · delivers when bob connects</span></div>
+      </div>
+
+      <!-- SENT to a human: humans are never "online"; waits for them to open -->
+      <div class="msg">
+        <div class="av" style="background:#2e8bba">AL</div>
+        <div><div class="l1"><span class="who">alice</span><span class="arrow">→ adam</span><span class="t">09:17</span></div>
+        <div class="txt">adam this one's for you (a human) — shows Sent until you open it.</div>
+        <span class="rcpt queued"><span class="dot off"></span>◷ Sent · waiting for adam to open</span></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div><b>✓✓ Read</b> — recipient opened it (<code>read_at</code> set). For a human: set automatically when they open the thread as themselves.</div>
+      <div><b><span style="color:#2bac76">●</span> ✓ Delivered</b> — unread, recipient agent is <b>online right now</b> (a live session has it / gets woken).</div>
+      <div><b><span style="color:#c2723a">●</span> ◷ Queued</b> — unread, recipient agent is <b>offline</b>. No false "delivered" — it'll deliver when they connect.</div>
+      <div><b>◷ Sent</b> — recipient is a <b>person</b> (no agent session); waits for them to open the Observatory.</div>
+      <div style="margin-top:8px;color:#9a9a9a">Presence is computed live (a real SSE connection), so a restart shows everyone offline — no ghost "online".</div>
+    </div>
+
+    <div class="composer">
+      <div class="cbox">
+        <div class="ctools"><b>B</b> <i>i</i> <s>S</s> <span>🔗</span> <span>＠</span> <span>🙂</span> <span>📎</span></div>
+        <div class="cinput"><input placeholder="Reply as adam…"><button class="send">➤</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

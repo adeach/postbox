@@ -46,7 +46,10 @@ class AgentService:
             (status, now_iso(), agent_id))
 
     async def deregister(self, agent_id: str) -> None:
-        await self.db.execute("UPDATE agents SET status='offline' WHERE id=?", (agent_id,))
+        # 'deregistered' = the identity is GONE (session stopped / left), distinct from
+        # merely 'offline' (away, may reconnect). The directory excludes the former.
+        await self.db.execute(
+            "UPDATE agents SET status='deregistered' WHERE id=?", (agent_id,))
 
     async def _get(self, agent_id: str) -> AgentOut:
         r = await self.db.fetchone(
@@ -54,14 +57,19 @@ class AgentService:
         return AgentOut(id=r[0], name=r[1], address=r[2],
                         profile=json.loads(r[3]) if r[3] else None, status=r[4])
 
-    async def directory(self, include_offline: bool = False) -> list[AgentOut]:
-        sql = "SELECT id,name,address,profile,status FROM agents"
-        if not include_offline:
-            sql += " WHERE status='online'"
-        sql += " ORDER BY address"
-        rows = await self.db.fetchall(sql)
+    async def directory(self, online_ids: set[str]) -> list[AgentOut]:
+        """Recipient directory. Presence is LIVE (from EventBus.online_ids()), so the
+        stored `status` latch is ignored — `status` is annotated truthfully from whether
+        the identity currently holds an SSE connection. All registered identities are
+        listed (you can message an offline peer; it queues), each honestly labelled
+        online/offline. Deregistered (gone) identities are excluded; reaping otherwise-
+        dead ephemeral sessions is a separate concern."""
+        rows = await self.db.fetchall(
+            "SELECT id,name,address,profile FROM agents "
+            "WHERE status<>'deregistered' ORDER BY address")
         return [AgentOut(id=r[0], name=r[1], address=r[2],
-                         profile=json.loads(r[3]) if r[3] else None, status=r[4])
+                         profile=json.loads(r[3]) if r[3] else None,
+                         status="online" if r[0] in online_ids else "offline")
                 for r in rows]
 
     async def resolve_token(self, token: str) -> AgentOut | None:

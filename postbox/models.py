@@ -99,3 +99,10 @@ class SendAs(BaseModel):
 
 class CreateIdentity(BaseModel):
     name: str
+
+
+class ReadAs(BaseModel):
+    as_: str = Field(alias="as")     # the human identity opening the thread
+    thread_id: str
+
+    model_config = {"populate_by_name": True}

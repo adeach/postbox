@@ -10,3 +10,15 @@
 [2026-06-29 16:14:48] [INFO] [superpowers] PostToolUse skill=writing-plans
 [2026-06-29 16:15:18] [OK] [superpowers] Metric produced for PostToolUse: writing-plans
 [2026-06-29 16:15:18] [OK] [superpowers] Metric produced for PreToolUse: writing-plans
+[2026-06-30 06:25:07] [INFO] [superpowers] PostToolUse skill=brainstorming
+[2026-06-30 06:25:07] [INFO] [superpowers] PreToolUse skill=brainstorming
+[2026-06-30 06:25:37] [OK] [superpowers] Metric produced for PreToolUse: brainstorming
+[2026-06-30 06:25:37] [OK] [superpowers] Metric produced for PostToolUse: brainstorming
+[2026-06-30 16:17:10] [INFO] [superpowers] PreToolUse skill=writing-plans
+[2026-06-30 16:17:10] [INFO] [superpowers] PostToolUse skill=writing-plans
+[2026-06-30 16:17:48] [OK] [superpowers] Metric produced for PostToolUse: writing-plans
+[2026-06-30 16:17:48] [OK] [superpowers] Metric produced for PreToolUse: writing-plans
+[2026-06-30 17:42:11] [INFO] [superpowers] PreToolUse skill=writing-plans
+[2026-06-30 17:42:11] [INFO] [superpowers] PostToolUse skill=writing-plans
+[2026-06-30 17:42:56] [OK] [superpowers] Metric produced for PreToolUse: writing-plans
+[2026-06-30 17:42:56] [OK] [superpowers] Metric produced for PostToolUse: writing-plans

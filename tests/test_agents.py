@@ -9,7 +9,7 @@ async def test_register_returns_token_and_lists_in_directory(db):
     assert res.token
     assert res.address == "claude"
 
-    directory = await svc.directory()
+    directory = await svc.directory(online_ids={res.id})  # claude has a live connection
     assert any(a.address == "claude" for a in directory)
     # directory must NOT leak tokens
     assert not hasattr(directory[0], "token")
@@ -54,15 +54,17 @@ async def test_set_name_changes_handle_and_rejects_duplicate(db):
         await svc.set_name(b.id, "alice")              # taken
 
 
-async def test_deregister_and_online_directory(db):
+async def test_directory_annotates_live_status_not_stored_latch(db):
+    """Directory lists all identities with TRUTHFUL live presence (from online_ids),
+    ignoring the stored 'online' latch that register() writes."""
     from postbox.agents import AgentService
     from postbox.models import RegisterAgent
     svc = AgentService(db)
-    a = await svc.register(RegisterAgent())
+    a = await svc.register(RegisterAgent())          # register writes status='online'...
     b = await svc.register(RegisterAgent())
-    await svc.set_status(b.id, "offline")
-    online = await svc.directory()                      # online-only by default
-    ids = {x.id for x in online}
-    assert a.id in ids and b.id not in ids
-    await svc.deregister(a.id)
-    assert a.id not in {x.id for x in await svc.directory()}
+    dir_ = {x.id: x for x in await svc.directory(online_ids={a.id})}
+    assert dir_[a.id].status == "online"             # ...but live presence says: a online
+    assert dir_[b.id].status == "offline"            # b holds no SSE connection -> offline
+    # with nobody connected (e.g. after a restart) everyone is offline
+    none_live = {x.id: x for x in await svc.directory(online_ids=set())}
+    assert none_live[a.id].status == "offline" and none_live[b.id].status == "offline"

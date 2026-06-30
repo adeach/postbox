@@ -82,6 +82,22 @@ async def test_stream_drops_already_replayed_live_event(db):
     await agen.aclose()
 
 
+async def test_presence_derives_from_live_subscriptions(db):
+    """online = holds >=1 live subscription; refcount-safe; empty bus = all offline."""
+    bus = EventBus(db)
+    assert bus.is_online("a1") is False          # no subs -> offline (e.g. after restart)
+    assert bus.online_ids() == set()
+    q1 = bus.subscribe("a1")
+    q2 = bus.subscribe("a1")                       # two live connections
+    assert bus.is_online("a1") is True
+    assert bus.online_ids() == {"a1"}
+    bus.unsubscribe("a1", q1)
+    assert bus.is_online("a1") is True             # still one connection -> online
+    bus.unsubscribe("a1", q2)
+    assert bus.is_online("a1") is False            # last one gone -> offline
+    assert bus.online_ids() == set()
+
+
 async def test_firehose_receives_all_agents(db):
     bus = EventBus(db)
     q = bus.subscribe_all()
