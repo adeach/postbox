@@ -89,6 +89,7 @@ async function selectThread(tid){
     msgs.appendChild(el);
   });
   msgs.scrollTop = msgs.scrollHeight;
+  _lastIds[tid] = d.messages.length ? d.messages[d.messages.length - 1].id : null;  // for in_reply_to → reply stays in this thread
   renderSide();
   if(!current.startsWith("all")) $("cinput").focus();
 }
