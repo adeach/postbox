@@ -32,6 +32,8 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `scripts/mcp_verify.py` — drives v2 `postbox.mcp_server` over real token-less stdio MCP (handshake + tools/list incl. `set_name` + auto-registered `copilot-*` identity + deregister) the way Copilot does.
 - `scripts/v2_tmux_e2e.py` — real-tmux end-to-end proof (v2): a Session's wakeup loop pokes a live tmux pane when mail arrives.
 - `scripts/observer_e2e.py` — live Observatory proof (real uvicorn): seeds agents + a message, asserts observer endpoints reflect it, send-as delivers, and `/ui/` serves.
+- `scripts/presence_delivery_e2e.py` — live HTTP/SSE proof of the honest model (8 checks): live presence, Queued vs Delivered vs Sent, human read path + agent-guard, presence drop on SSE close, no ghost-online after restart.
+- `scripts/demo_live.py` — seeded live demo server on :8765 (alice online via held SSE, bob offline, adam human + messages in every receipt state) for clicking the real `/ui/`.
 - `tests/conftest.py` — `db` fixture (temp-db Database).
 - `tests/test_smoke.py` `test_db.py` `test_auth.py` `test_models.py` `test_agents.py` `test_events.py` `test_messages.py` `test_api.py` `test_sse.py` `test_mcp.py` `test_listener.py` `test_observer.py` `test_observer_api.py` — per-module test suites.
 

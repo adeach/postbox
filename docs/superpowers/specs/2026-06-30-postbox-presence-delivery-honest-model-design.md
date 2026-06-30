@@ -51,24 +51,28 @@ def online_ids(self) -> set[str]:
 Presence annotation happens in the API/observer layer, which has `app.state.bus`:
 
 - **`GET /agents` (agent-facing `list_agents`)** and **`GET /observer/agents`**: load identities from
-  DB, set each `AgentFull.status` to `"online"`/`"offline"` from `bus.is_online(id)` (overriding the
-  stored column).
-- **Visibility filter:** the agent-facing directory lists identities that are **online OR human**
-  (`profile.human`). This hides dead ephemeral `copilot-*` tombstones (they're offline) without a
-  reaper, while keeping humans (never "online", always reachable via web) always listable. The
-  Observatory's `/observer/agents` keeps returning **all** identities (it's the god view) but with
-  truthful live status.
+  DB, set each `status` to `"online"`/`"offline"` from live presence (`bus.online_ids()`), overriding
+  the stored column.
+- **Visibility (revised during build):** both directories list **all** registered identities with a
+  truthful `online`/`offline` label, EXCEPT those explicitly **deregistered** (session stopped /
+  `DELETE /agents/self`), which are excluded. Rationale discovered while implementing: an *online-only*
+  agent directory broke valid flows (a just-registered agent, messaging a peer who's briefly away) and
+  made `list_agents` race on "has the SSE loop subscribed yet." Showing an offline agent labelled
+  *offline* is honest — the original bug was labelling it *online*. So liveness (online/offline) is for
+  display; lifecycle (`deregistered`) is the only exclusion. `deregister` now sets
+  `status='deregistered'` (distinct from `offline`). Reaping otherwise-dead ephemeral sessions remains
+  a later-tier concern; it is **not** solved by hiding them here.
 
 ### Humans are people, not agents
 A human has no MCP session — only the Observatory. Humans never carry agent presence: no green dot,
 no "online". The frontend renders `profile.human` identities with a neutral "person" affordance, not
 a presence dot. `create_identity` stops asserting `status="online"` in its return (L3).
 
-### Name reuse (H2, scoped)
-`set_name` uniqueness rejects a handle only if **another online identity** currently holds it
-(`bus.is_online`), instead of `WHERE address=? AND id<>?` unconditionally. A relaunched agent can
-reclaim its own name once the prior session is offline. (Hard-delete/reaping of tombstones is left to
-a later tier; the visibility filter already hides them.)
+### Name reuse (H2) — DEFERRED out of this tier
+Originally planned here, but cut during build: `agents.address` has a `UNIQUE` constraint, so truly
+*reclaiming* an offline holder's name requires renaming/removing that holder's row first — more than a
+one-line predicate change, and entangled with reaping. Deferred to the reaping tier. `set_name` keeps
+its current behaviour (reject any duplicate address) for now.
 
 ---
 
