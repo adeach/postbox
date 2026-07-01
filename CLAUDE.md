@@ -44,7 +44,7 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 v1 service implemented (2026-06-29). REST + SSE service, MCP server, and listener daemon built and tested (39 tests passing).
 v2 implemented (2026-06-29): per-session auto-identity (token-less shared MCP config, `set_name`) + real-time tmux wakeup (idle pane poked on new mail).
 Observatory implemented (2026-06-30): Slack-themed web UI at `/ui/` (open-as-any-identity inbox, all-activity firehose, reply-as, live SSE) backed by `ObserverService` + `/observer/*` API (70 tests passing).
-Fleet mode implemented (2026-07-01): run dozens of headless agents from the UI — in-process `Supervisor` spawns `copilot -p` turns on new mail (per-identity coalesced, global cap, crash-loop backoff, process-group kill), each authenticating AS its durable identity via injected `POSTBOX_TOKEN`; `/fleet` API + 🤖 Fleet tab + optional `POSTBOX_OBSERVER_TOKEN` guard (91 tests + live `scripts/fleet_e2e.py`). On branch `feat/fleet-mode`.
+Fleet mode implemented (2026-07-01): run dozens of headless agents from the UI — in-process `Supervisor` spawns `copilot -p` turns on new mail (per-identity coalesced, global cap, crash-loop backoff, process-group kill), each authenticating AS its durable identity via injected `POSTBOX_TOKEN`; `/fleet` API + 🤖 Fleet tab + optional `POSTBOX_OBSERVER_TOKEN` guard (95 tests + live `scripts/fleet_e2e.py`; code-reviewed, 4 findings fixed). On branch `feat/fleet-mode`.
 
 ## Stack
 Python + FastAPI (REST + SSE via sse-starlette), SQLite (WAL) via aiosqlite, official Python MCP SDK, httpx + httpx-sse (client side). Single `uvicorn` process.

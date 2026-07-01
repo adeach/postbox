@@ -19,15 +19,19 @@ Run Postbox with a fleet of dozens of headless agents managed from the UI
 - `/fleet` REST API + `require_observer` guard (opt-in `POSTBOX_OBSERVER_TOKEN`),
   supervisor wired into the app lifespan (`postbox/api.py`).
 - 🤖 Fleet tab in the Observatory (`postbox/web/*`), incl. observer-token support.
-- Tests: `tests/test_fleet.py` (10, incl. real group-kill), `tests/test_fleet_api.py`
-  (3). Full suite **91 passing**.
+- Tests: `tests/test_fleet.py` (14, incl. real group-kill + 4 code-review regressions:
+  concurrent-run_now single-spawn, huge-output reap+bound, stop() awaits turns) and
+  `tests/test_fleet_api.py` (4). Full suite **95 passing**.
 - Live proof: `scripts/fleet_e2e.py` — real subprocess authenticates via injected
-  token, coalescing verified. Passes.
+  token, coalescing verified. Passes (re-verified after review fixes).
 - README "Fleet mode" section (add agents, VM port-forward, tunables).
+- **Code review done** (background agent): 1 Critical (double-spawn race) + 1 High
+  (huge-line orphan) + 2 Medium (stop() task leak, set_name 500) — all fixed +
+  regression-tested. Reserve-slot-before-await, chunked-drain-with-finally-reap,
+  stop()-awaits-turns, set_name gated for durable identities (+FK→409, DB rollback).
 
 ## Next step
-- Awaiting the `fleet-code-review` findings (in flight); fold in any real bugs.
-- Then: user tests on laptop (swap command to real `copilot -p {prompt}`), then VM.
+- User tests on laptop (swap command to real `copilot -p {prompt}`), then VM.
 - NOT pushed / no PR (waiting for the maintainer's go).
 
 ## Key paths
