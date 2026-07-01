@@ -13,7 +13,17 @@ let composeMode = false;
 let _lastIds = {};
 
 const $ = id => document.getElementById(id);
-const j = async (u, o) => { const r = await fetch(API+u, o); if(!r.ok) throw new Error(await r.text()); return r.status===204?null:r.json(); };
+// Observer token (only needed when POSTBOX_OBSERVER_TOKEN is set on the server, e.g. the VM).
+// EventSource can't set headers, so it goes on the query string; everything else uses a header.
+const OBS_TOKEN = new URLSearchParams(location.search).get("token")
+  || localStorage.getItem("postbox.observer_token") || "";
+const j = async (u, o={}) => {
+  const headers = {...(o.headers||{})};
+  if(OBS_TOKEN) headers["X-Observer-Token"] = OBS_TOKEN;
+  const r = await fetch(API+u, {...o, headers});
+  if(!r.ok) throw new Error(await r.text());
+  return r.status===204?null:r.json();
+};
 
 async function loadAgents(){ AGENTS = await j("/observer/agents"); }
 function agentByAddr(a){ return AGENTS.find(x=>x.address===a) || {address:a,name:a,status:"offline"}; }
@@ -102,6 +112,7 @@ function receiptHtml(m){
 }
 
 async function selectThread(tid){
+  leaveFleet();
   composeMode = false;
   openThread = tid;
   const d = await j("/observer/threads/"+tid);
@@ -144,6 +155,7 @@ async function selectThread(tid){
 }
 
 function openCompose(){
+  leaveFleet();
   if(current === "all"){ setStatus("Open as an identity first (top-left), then compose.", "err"); return; }
   composeMode = true; openThread = null;
   $("mTitle").textContent = "✎ New message";
@@ -206,12 +218,97 @@ sendBtn.onclick = doSend;
 input.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doSend(); }});
 
 function connectLive(){
-  const es = new EventSource("/observer/events");
-  const refresh = async ()=>{ await loadThreads(); renderSide(); if(openThread && !composeMode) await selectThread(openThread); };
+  const url = "/observer/events" + (OBS_TOKEN ? "?token="+encodeURIComponent(OBS_TOKEN) : "");
+  const es = new EventSource(url);
+  const refresh = async ()=>{
+    if(fleetView){ renderFleet(); return; }
+    await loadThreads(); renderSide(); if(openThread && !composeMode) await selectThread(openThread);
+  };
   es.addEventListener("message.received", refresh);
   es.addEventListener("message.read", refresh);   // flips ✓ Delivered → ✓✓ Read live
   es.onerror = ()=>{};  // browser auto-reconnects
 }
+
+// ---- Fleet control panel ----
+let fleetView = false, fleetTimer = null;
+const FLEET_STATE = { running:["#2bac76","running"], queued:["#c9902f","queued"],
+  idle:["#8a94a6","idle"], backoff:["#e01e5a","backoff"], disabled:["#9aa0a6","disabled"] };
+
+function leaveFleet(){ fleetView=false; if(fleetTimer){ clearInterval(fleetTimer); fleetTimer=null; } }
+
+function openFleet(){
+  fleetView = true; composeMode = false; openThread = null;
+  $("obsTag").style.display="none"; $("mAvs").innerHTML="";
+  $("mTitle").textContent = "🤖 Fleet";
+  $("mSub").textContent = "headless agents — a turn is spawned when they get mail";
+  $("cinput").disabled = true; $("cinput").placeholder = "Fleet control panel";
+  renderFleet();
+  if(fleetTimer) clearInterval(fleetTimer);
+  fleetTimer = setInterval(()=>{ if(fleetView) renderFleet(); }, 2000);
+}
+
+async function renderFleet(){
+  let list;
+  try{ list = await j("/fleet"); }
+  catch(e){ $("msgs").innerHTML = `<div class="empty">Fleet API error: ${esc(String(e.message||e))}</div>`; return; }
+  const rows = list.map(a=>{
+    const [col,lbl] = FLEET_STATE[a.state] || ["#888", a.state];
+    const cmd = esc((a.command||[]).join(" "));
+    const meta = [a.last_exit!=null?`exit ${a.last_exit}`:"", a.fail_count?`fails ${a.fail_count}`:"",
+                  a.last_run?("ran "+a.last_run.slice(11,19)):""].filter(Boolean).join(" · ");
+    return `<div class="frow" data-a="${esc(a.address)}">
+      <span class="fdot" style="background:${col}" title="${lbl}"></span>
+      <div class="fmain"><div class="fname">${esc(a.address)}<span class="fstate">${lbl}</span></div>
+        <div class="fcmd">${cmd}${a.cwd?` <span class="fcwd">@ ${esc(a.cwd)}</span>`:""}</div>
+        ${meta?`<div class="fmeta">${esc(meta)}</div>`:""}
+        ${a.tail?`<pre class="ftail">${esc(a.tail)}</pre>`:""}</div>
+      <div class="fbtns">
+        <button data-act="run">Run</button>
+        <button data-act="kill" ${a.state==="running"?"":"disabled"}>Kill</button>
+        <button data-act="${a.enabled?"disable":"enable"}">${a.enabled?"Disable":"Enable"}</button>
+        <button data-act="remove" class="danger" title="Remove from fleet">✕</button>
+      </div></div>`;
+  }).join("");
+  $("msgs").innerHTML = `<div class="fleet">
+    <div class="faddbar">
+      <input id="fAddr" placeholder="agent name (e.g. reviewer)" autocomplete="off">
+      <input id="fCmd" placeholder="command — default: copilot -p {prompt}" autocomplete="off">
+      <input id="fCwd" placeholder="cwd (optional)" autocomplete="off">
+      <button id="fAdd">Add agent</button>
+    </div>
+    ${rows || '<div class="empty">No fleet agents yet — add one above.</div>'}
+  </div>`;
+  $("fAdd").onclick = addFleetAgent;
+  $("msgs").querySelectorAll(".frow .fbtns button").forEach(b=>{
+    b.onclick = ()=> fleetAction(b.closest(".frow").dataset.a, b.dataset.act);
+  });
+}
+
+async function addFleetAgent(){
+  const address = $("fAddr").value.trim();
+  if(!address){ setStatus("Enter an agent name.","err"); return; }
+  const cmdRaw = $("fCmd").value.trim();
+  const command = cmdRaw ? cmdRaw.split(/\s+/) : null;   // arg-list; server never shells out
+  const cwd = $("fCwd").value.trim() || null;
+  try{
+    await j("/fleet",{method:"POST",headers:{'content-type':'application/json'},
+      body:JSON.stringify({address, command, cwd})});
+    setStatus(`Added ${address}`,"ok"); await loadAgents(); await renderFleet();
+  }catch(e){ setStatus("⚠ "+String(e.message||e).slice(0,90),"err"); }
+}
+
+async function fleetAction(addr, act){
+  try{
+    if(act==="remove"){
+      if(!confirm(`Remove ${addr} from the fleet? (its inbox/identity stays)`)) return;
+      await j("/fleet/"+encodeURIComponent(addr),{method:"DELETE"});
+    } else {
+      await j(`/fleet/${encodeURIComponent(addr)}/${act}`,{method:"POST"});
+    }
+    setStatus(`${addr}: ${act}`,"ok"); await loadAgents(); await renderFleet();
+  }catch(e){ setStatus("⚠ "+String(e.message||e).slice(0,90),"err"); }
+}
+$("fleetBtn").onclick = openFleet;
 
 (async function boot(){
   await loadAgents();
@@ -224,6 +321,7 @@ function connectLive(){
 })();
 
 async function setIdentity(idn){
+  leaveFleet();
   current = idn; localStorage.setItem("postbox.identity", idn);
   composeMode = false;
   $("sideName").textContent = idn==="all" ? "All activity" : agentByAddr(idn).name;
