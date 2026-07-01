@@ -45,6 +45,24 @@ CREATE TABLE IF NOT EXISTS attachments (
   blob_path    TEXT NOT NULL
 );
 
+-- Fleet mode: a durable, managed worker identity the Supervisor spawns headless
+-- turns for on new mail. `token` is stored plaintext (local secret in a local DB)
+-- so the spawned CLI can authenticate AS this identity. `command_json` is a JSON
+-- arg-list template with a {prompt} placeholder — an arg-list, never a shell
+-- string, so there is no command injection.
+CREATE TABLE IF NOT EXISTS fleet_agents (
+  address       TEXT PRIMARY KEY REFERENCES agents(address),
+  token         TEXT NOT NULL,
+  command_json  TEXT NOT NULL,
+  cwd           TEXT,
+  enabled       INTEGER NOT NULL DEFAULT 1,
+  fail_count    INTEGER NOT NULL DEFAULT 0,
+  backoff_until TEXT,
+  last_exit     INTEGER,
+  last_run      TEXT,
+  created_at    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   agent_id   TEXT NOT NULL REFERENCES agents(id),

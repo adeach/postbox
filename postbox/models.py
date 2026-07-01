@@ -106,3 +106,22 @@ class ReadAs(BaseModel):
     thread_id: str
 
     model_config = {"populate_by_name": True}
+
+
+class FleetAgentIn(BaseModel):
+    address: str                          # identity to manage (registered if new)
+    command: list[str] | None = None      # arg-list template with a {prompt} placeholder
+    cwd: str | None = None
+
+
+class FleetAgentOut(BaseModel):
+    address: str
+    enabled: bool
+    state: str                            # idle | running | queued | backoff | disabled
+    command: list[str]
+    cwd: str | None = None
+    fail_count: int = 0
+    last_exit: int | None = None
+    last_run: str | None = None
+    backoff_until: str | None = None
+    tail: str = ""                        # last lines of the most recent turn's output

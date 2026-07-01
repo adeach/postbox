@@ -70,27 +70,33 @@ INSTRUCTIONS = (
 
 
 class Session:
-    """Owns one agent's session: auto-register, background SSE wakeup, deregister."""
+    """Owns one agent's session: auto-register, background SSE wakeup, deregister.
+
+    If a token is provided (POSTBOX_TOKEN — fleet mode), the session acts AS that
+    pre-registered durable identity instead of auto-registering, and does NOT
+    deregister on exit (the identity outlives the turn)."""
 
     def __init__(self, client, pane: str | None, desired_name: str | None,
-                 runner=None):
+                 runner=None, token: str | None = None):
         self.client = client
         self.pane = pane
         self.desired_name = desired_name
         self._runner = runner                  # injected tmux runner for tests
-        self.token: str | None = None
-        self.tools: MailTools | None = None
+        self.token: str | None = token
+        self._durable = token is not None      # provided token → don't register/deregister
+        self.tools: MailTools | None = MailTools(client, token) if token else None
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        wakeup = {"kind": "tmux", "target": self.pane} if self.pane else {"kind": "none"}
-        body = {"wakeup": wakeup}
-        if self.desired_name:
-            body["name"] = self.desired_name
-        r = await self.client.post("/agents", json=body)
-        r.raise_for_status()
-        self.token = r.json()["token"]
-        self.tools = MailTools(self.client, self.token)
+        if not self._durable:
+            wakeup = {"kind": "tmux", "target": self.pane} if self.pane else {"kind": "none"}
+            body = {"wakeup": wakeup}
+            if self.desired_name:
+                body["name"] = self.desired_name
+            r = await self.client.post("/agents", json=body)
+            r.raise_for_status()
+            self.token = r.json()["token"]
+            self.tools = MailTools(self.client, self.token)
         self._task = asyncio.create_task(self._wakeup_loop())
 
     def _build_wakeup(self):
@@ -129,7 +135,7 @@ class Session:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-        if self.token:
+        if self.token and not self._durable:
             with contextlib.suppress(Exception):
                 await self.client.delete(
                     "/agents/self", headers={"Authorization": f"Bearer {self.token}"})
@@ -137,10 +143,11 @@ class Session:
 
 def build_server():
     url = os.environ.get("POSTBOX_URL", "http://127.0.0.1:8765")
+    token = os.environ.get("POSTBOX_TOKEN")     # fleet mode: act as this durable identity
     pane = os.environ.get("TMUX_PANE")          # inherited inside a tmux pane
     name = os.environ.get("POSTBOX_NAME")       # optional desired name
     client = httpx.AsyncClient(base_url=url)
-    session = Session(client, pane=pane, desired_name=name)
+    session = Session(client, pane=pane, desired_name=name, token=token)
 
     @asynccontextmanager
     async def lifespan(_server):
