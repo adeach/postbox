@@ -134,3 +134,5 @@
 .frow .fbtns button:hover{background:#e6e6e6}
 .frow .fbtns button:disabled{opacity:.4;cursor:not-allowed}
 .frow .fbtns button.danger{color:var(--red);border-color:#f3c4d3}
+.frow.off{opacity:.5}
+.frow.off .fstate{color:var(--red)}

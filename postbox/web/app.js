@@ -221,7 +221,7 @@ function connectLive(){
   const url = "/observer/events" + (OBS_TOKEN ? "?token="+encodeURIComponent(OBS_TOKEN) : "");
   const es = new EventSource(url);
   const refresh = async ()=>{
-    if(fleetView){ renderFleet(); return; }
+    if(fleetView){ refreshFleetList(); return; }
     await loadThreads(); renderSide(); if(openThread && !composeMode) await selectThread(openThread);
   };
   es.addEventListener("message.received", refresh);
@@ -230,45 +230,21 @@ function connectLive(){
 }
 
 // ---- Fleet control panel ----
-let fleetView = false, fleetTimer = null;
-const FLEET_STATE = { running:["#2bac76","running"], queued:["#c9902f","queued"],
-  idle:["#8a94a6","idle"], backoff:["#e01e5a","backoff"], disabled:["#9aa0a6","disabled"] };
+let fleetView = false, fleetTimer = null, fleetSig = "", fleetPausedUntil = 0;
+// idle must look clearly ON (blue), distinct from disabled (grey + dimmed row)
+const FLEET_STATE = { running:["#17a673","running"], queued:["#e8912d","queued"],
+  idle:["#3d9be0","ready"], backoff:["#e01e5a","backoff"], disabled:["#b8bcc4","disabled"] };
 
 function leaveFleet(){ fleetView=false; if(fleetTimer){ clearInterval(fleetTimer); fleetTimer=null; } }
 
 function openFleet(){
-  fleetView = true; composeMode = false; openThread = null;
+  fleetView = true; composeMode = false; openThread = null; fleetSig = "";
   $("obsTag").style.display="none"; $("mAvs").innerHTML="";
   $("mTitle").textContent = "🤖 Fleet";
   $("mSub").textContent = "headless agents — a turn is spawned when they get mail";
   $("cinput").disabled = true; $("cinput").placeholder = "Fleet control panel";
-  renderFleet();
-  if(fleetTimer) clearInterval(fleetTimer);
-  fleetTimer = setInterval(()=>{ if(fleetView) renderFleet(); }, 2000);
-}
-
-async function renderFleet(){
-  let list;
-  try{ list = await j("/fleet"); }
-  catch(e){ $("msgs").innerHTML = `<div class="empty">Fleet API error: ${esc(String(e.message||e))}</div>`; return; }
-  const rows = list.map(a=>{
-    const [col,lbl] = FLEET_STATE[a.state] || ["#888", a.state];
-    const cmd = esc((a.command||[]).join(" "));
-    const meta = [a.last_exit!=null?`exit ${a.last_exit}`:"", a.fail_count?`fails ${a.fail_count}`:"",
-                  a.last_run?("ran "+a.last_run.slice(11,19)):""].filter(Boolean).join(" · ");
-    return `<div class="frow" data-a="${esc(a.address)}">
-      <span class="fdot" style="background:${col}" title="${lbl}"></span>
-      <div class="fmain"><div class="fname">${esc(a.address)}<span class="fstate">${lbl}</span></div>
-        <div class="fcmd">${cmd}${a.cwd?` <span class="fcwd">@ ${esc(a.cwd)}</span>`:""}</div>
-        ${meta?`<div class="fmeta">${esc(meta)}</div>`:""}
-        ${a.tail?`<pre class="ftail">${esc(a.tail)}</pre>`:""}</div>
-      <div class="fbtns">
-        <button data-act="run">Run</button>
-        <button data-act="kill" ${a.state==="running"?"":"disabled"}>Kill</button>
-        <button data-act="${a.enabled?"disable":"enable"}">${a.enabled?"Disable":"Enable"}</button>
-        <button data-act="remove" class="danger" title="Remove from fleet">✕</button>
-      </div></div>`;
-  }).join("");
+  // Render the shell (add form + list container) ONCE. The refresh only rewrites
+  // #fleetList, so it never wipes what you're typing or eats a button click.
   $("msgs").innerHTML = `<div class="fleet">
     <div class="faddbar">
       <input id="fAddr" placeholder="agent name (e.g. reviewer)" autocomplete="off">
@@ -276,10 +252,43 @@ async function renderFleet(){
       <input id="fCwd" placeholder="cwd (optional)" autocomplete="off">
       <button id="fAdd">Add agent</button>
     </div>
-    ${rows || '<div class="empty">No fleet agents yet — add one above.</div>'}
+    <div id="fleetList"></div>
   </div>`;
   $("fAdd").onclick = addFleetAgent;
-  $("msgs").querySelectorAll(".frow .fbtns button").forEach(b=>{
+  refreshFleetList(true);
+  if(fleetTimer) clearInterval(fleetTimer);
+  fleetTimer = setInterval(()=>{ if(fleetView) refreshFleetList(); }, 2000);
+}
+
+async function refreshFleetList(force){
+  const host = $("fleetList"); if(!host) return;
+  if(!force && Date.now() < fleetPausedUntil) return;   // just interacted — don't clobber
+  let list;
+  try{ list = await j("/fleet"); }
+  catch(e){ host.innerHTML = `<div class="empty">Fleet API error: ${esc(String(e.message||e))}</div>`; return; }
+  const sig = JSON.stringify(list);
+  if(!force && sig === fleetSig) return;                 // unchanged → don't re-render (keeps buttons live)
+  fleetSig = sig;
+  host.innerHTML = list.map(a=>{
+    const [col,lbl] = FLEET_STATE[a.state] || ["#888", a.state];
+    const cmd = esc((a.command||[]).join(" "));
+    const meta = [a.last_exit!=null?`exit ${a.last_exit}`:"", a.fail_count?`fails ${a.fail_count}`:"",
+                  a.last_run?("ran "+a.last_run.slice(11,19)):""].filter(Boolean).join(" · ");
+    const running = a.state==="running";
+    return `<div class="frow${a.enabled?"":" off"}" data-a="${esc(a.address)}">
+      <span class="fdot" style="background:${col}" title="${lbl}"></span>
+      <div class="fmain"><div class="fname">${esc(a.address)}<span class="fstate">${a.enabled?lbl:"disabled"}</span></div>
+        <div class="fcmd">${cmd}${a.cwd?` <span class="fcwd">@ ${esc(a.cwd)}</span>`:""}</div>
+        ${meta?`<div class="fmeta">${esc(meta)}</div>`:""}
+        ${a.tail?`<pre class="ftail">${esc(a.tail)}</pre>`:""}</div>
+      <div class="fbtns">
+        <button data-act="run" ${running?"disabled":""}>Run</button>
+        <button data-act="kill" ${running?"":"disabled"}>Kill</button>
+        <button data-act="${a.enabled?"disable":"enable"}">${a.enabled?"Disable":"Enable"}</button>
+        <button data-act="remove" class="danger" title="Remove from fleet">✕</button>
+      </div></div>`;
+  }).join("") || '<div class="empty">No fleet agents yet — add one above.</div>';
+  host.querySelectorAll(".frow .fbtns button").forEach(b=>{
     b.onclick = ()=> fleetAction(b.closest(".frow").dataset.a, b.dataset.act);
   });
 }
@@ -290,14 +299,18 @@ async function addFleetAgent(){
   const cmdRaw = $("fCmd").value.trim();
   const command = cmdRaw ? cmdRaw.split(/\s+/) : null;   // arg-list; server never shells out
   const cwd = $("fCwd").value.trim() || null;
+  fleetPausedUntil = Date.now() + 1500;
   try{
     await j("/fleet",{method:"POST",headers:{'content-type':'application/json'},
       body:JSON.stringify({address, command, cwd})});
-    setStatus(`Added ${address}`,"ok"); await loadAgents(); await renderFleet();
-  }catch(e){ setStatus("⚠ "+String(e.message||e).slice(0,90),"err"); }
+    setStatus(`Added ${address}`,"ok");
+    $("fAddr").value=""; $("fCmd").value=""; $("fCwd").value="";
+    await loadAgents(); await refreshFleetList(true);
+  }catch(e){ setStatus("⚠ "+String(e.message||e).slice(0,120),"err"); }
 }
 
 async function fleetAction(addr, act){
+  fleetPausedUntil = Date.now() + 1500;                  // don't let the 2s refresh race this click
   try{
     if(act==="remove"){
       if(!confirm(`Remove ${addr} from the fleet? (its inbox/identity stays)`)) return;
@@ -305,8 +318,8 @@ async function fleetAction(addr, act){
     } else {
       await j(`/fleet/${encodeURIComponent(addr)}/${act}`,{method:"POST"});
     }
-    setStatus(`${addr}: ${act}`,"ok"); await loadAgents(); await renderFleet();
-  }catch(e){ setStatus("⚠ "+String(e.message||e).slice(0,90),"err"); }
+    setStatus(`${addr}: ${act}`,"ok"); await loadAgents(); await refreshFleetList(true);
+  }catch(e){ setStatus("⚠ "+String(e.message||e).slice(0,120),"err"); }
 }
 $("fleetBtn").onclick = openFleet;
 
