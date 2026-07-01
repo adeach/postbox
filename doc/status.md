@@ -21,7 +21,7 @@ Run Postbox with a fleet of dozens of headless agents managed from the UI
 - 🤖 Fleet tab in the Observatory (`postbox/web/*`), incl. observer-token support.
 - Tests: `tests/test_fleet.py` (14, incl. real group-kill + 4 code-review regressions:
   concurrent-run_now single-spawn, huge-output reap+bound, stop() awaits turns) and
-  `tests/test_fleet_api.py` (4). Full suite **98 passing**.
+  `tests/test_fleet_api.py` (4). Full suite **99 passing**.
 - Live proof: `scripts/fleet_e2e.py` — real subprocess authenticates via injected
   token, coalescing verified. Passes (re-verified after review fixes).
 - README "Fleet mode" section (add agents, VM port-forward, tunables).

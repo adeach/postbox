@@ -283,36 +283,39 @@ class Supervisor:
 
     async def _launch(self, row: dict, address: str) -> None:
         """Fill the pre-reserved slot at self.running[address] with a live turn.
-        Exception-safe: ANY failure before a supervised task exists releases the
-        reservation, so a DB hiccup can never wedge the agent permanently."""
+        A `finally` releases the reservation on ANY non-success — exception,
+        cancellation (client disconnects the /run request), or shutdown — and reaps a
+        child that was spawned but never supervised. So the slot can never wedge."""
+        proc = None
+        created = False
         try:
             template = json.loads(row["command_json"])
             argv = [a.replace("{prompt}", PROMPT) for a in template]
             env = {**os.environ, "POSTBOX_TOKEN": row["token"],
                    "POSTBOX_URL": self.s.public_url}
-            env.pop("POSTBOX_NAME", None)                 # token wins; don't let a name fight it
+            env.pop("POSTBOX_NAME", None)             # token wins; don't let a name fight it
             self._last_run[address] = time.monotonic()
             await self.fleet.mark_run(address)
             proc = await self._spawn(argv, row["cwd"], env)
-        except Exception as e:                            # bad binary, DB error, etc.
+            turn = self.running.get(address)
+            if turn is None or self._stopped:         # reservation cleared / shutting down
+                return                                # finally reaps proc + releases slot
+            turn.proc = proc
+            turn.started = time.monotonic()
+            turn.task = asyncio.create_task(self._supervise(address, turn))
+            created = True
+        except Exception as e:                        # bad binary, DB error (NOT cancellation)
             log.warning("launch failed for %s: %r", address, e)
-            self.running.pop(address, None)               # release the reservation
             self._tails[address] = f"launch error: {e}"
             with contextlib.suppress(Exception):
                 await self.fleet.record_exit(address, 127, self.s)
-            self.poke()
-            return
-        # Spawned. If we're shutting down or the reservation was cleared, don't create
-        # an un-awaited task — reap the child and release the slot.
-        turn = self.running.get(address)
-        if turn is None or self._stopped:
-            with contextlib.suppress(Exception):
-                await self._terminate(proc)
-            self.running.pop(address, None)
-            return
-        turn.proc = proc
-        turn.started = time.monotonic()
-        turn.task = asyncio.create_task(self._supervise(address, turn))
+        finally:
+            if not created:
+                self.running.pop(address, None)       # release reservation (sync — survives cancel)
+                if proc is not None:
+                    with contextlib.suppress(Exception):
+                        await self._terminate(proc)   # reap a spawned-but-unsupervised child
+                self.poke()
 
     def _append_tail(self, turn: _Turn, chunk: bytes) -> None:
         """Bounded output tail: cap line length AND buffer growth so a single huge

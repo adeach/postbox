@@ -17,6 +17,10 @@ isn't lost.
       status: later
 - [ ] `run` on a disabled agent currently spawns a one-off turn (ignores enabled) —
       confirm that's the desired "force" semantics or gate it — status: todo
+- [ ] Launch/infra failures call `record_exit(127)`, so a transient DB blip counts
+      toward `auto_disable_after` (a bad *binary* auto-disabling is correct; a DB
+      hiccup being attributed to the agent is debatable). Consider only counting real
+      child exits toward crash-loop backoff — status: later (harmless to correctness)
 
 ## Pre-existing audit items (not touched by Fleet mode)
 See `docs/superpowers/specs/2026-06-30-postbox-correctness-audit.md`.

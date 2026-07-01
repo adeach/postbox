@@ -339,3 +339,24 @@ async def test_launch_during_stop_does_not_leak_a_turn(db, tmp_path):
     await run
     await stop
     assert "alice" not in sup.running              # slot released; no un-awaited supervise task
+
+
+async def test_cancellation_during_launch_releases_reservation(db, tmp_path):
+    """Residual: a CancelledError mid-_launch (client disconnects POST /run) must
+    still release the reserved slot — the `finally` covers cancellation too."""
+    hold = asyncio.Event()
+
+    async def blocking_mark_run(_addr):
+        await hold.wait()
+
+    stub = Stub()
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path), spawn=stub)
+    await fleet.upsert("carol")
+    fleet.mark_run = blocking_mark_run
+    run = asyncio.create_task(sup.run_now("carol"))
+    await asyncio.sleep(0.05)                       # reserved, blocked in mark_run
+    assert "carol" in sup.running
+    run.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await run
+    assert "carol" not in sup.running              # reservation released on cancel — no wedge
