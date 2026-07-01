@@ -25,10 +25,11 @@ Run Postbox with a fleet of dozens of headless agents managed from the UI
 - Live proof: `scripts/fleet_e2e.py` — real subprocess authenticates via injected
   token, coalescing verified. Passes (re-verified after review fixes).
 - README "Fleet mode" section (add agents, VM port-forward, tunables).
-- **Code review done** (background agent): 1 Critical (double-spawn race) + 1 High
-  (huge-line orphan) + 2 Medium (stop() task leak, set_name 500) — all fixed +
-  regression-tested. Reserve-slot-before-await, chunked-drain-with-finally-reap,
-  stop()-awaits-turns, set_name gated for durable identities (+FK→409, DB rollback).
+- **Code review: complete & clean** (background agent, 3 rounds). Round 1: 1 Critical
+  (double-spawn) + 1 High (huge-line orphan) + 2 Medium (stop() task leak, set_name
+  500). Round 2: 2 new in the reworked path (reservation leak on DB error; late task
+  on stop). Round 3: cancellation-path reservation leak. **All fixed + regression-
+  tested; reviewer confirmed the reserve/launch/stop path sound, nothing outstanding.**
 
 ## Next step
 - User tests on laptop (swap command to real `copilot -p {prompt}`), then VM.
