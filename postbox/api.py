@@ -15,6 +15,7 @@ from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage,
 from postbox.models import CreateIdentity, ReadAs, SendAs, FleetAgentIn, FleetAgentOut
 from postbox.observer import ObserverService
 import json
+import sqlite3
 
 
 def create_app(data_dir: str | None = None) -> FastAPI:
@@ -77,6 +78,10 @@ def create_app(data_dir: str | None = None) -> FastAPI:
             return await app.state.agents.set_name(agent.id, payload.name)
         except ValueError as e:
             raise HTTPException(409, str(e))
+        except sqlite3.IntegrityError:
+            # e.g. a fleet/durable identity (whose address is a referenced key) trying
+            # to rename — reject cleanly instead of surfacing a 500.
+            raise HTTPException(409, "this identity cannot be renamed")
 
     @app.delete("/agents/self", status_code=204)
     async def deregister(agent: AgentOut = Depends(current_agent)):

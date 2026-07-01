@@ -237,3 +237,48 @@ async def test_list_status_projects_states(db, tmp_path):
     st = {x.address: x.state for x in await sup.list_status()}
     assert st["idle1"] == "running"
     await finish_all(sup, stub)
+
+
+# ----- regressions for code-review findings -----
+
+async def test_concurrent_run_now_spawns_once(db, tmp_path):
+    """Issue 1: the slot is reserved synchronously, so racing run_now calls (a
+    double-click of 'Run', or reconcile vs run_now) can't double-spawn / exceed cap."""
+    stub = Stub()
+    _, _, _, fleet, sup = await build(
+        db, mk_settings(tmp_path, max_concurrent=1), spawn=stub)
+    await fleet.upsert("alice")
+    results = await asyncio.gather(sup.run_now("alice"), sup.run_now("alice"))
+    assert sorted(results) == ["already-running", "started"]
+    assert len(stub.calls) == 1 and len(sup.running) == 1
+    await finish_all(sup, stub)
+
+
+async def test_huge_newlineless_output_is_drained_reaped_and_bounded(db, tmp_path):
+    """Issue 2: a single >64 KB line with no newline must still drain to EOF, reap
+    the child, and keep the tail bounded (no orphan, no unbounded memory)."""
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path))   # real spawn
+    await fleet.upsert("big", command=[
+        sys.executable, "-c", "import sys; sys.stdout.write('X'*100000)"])
+    await sup.run_now("big")
+    await sup.running["big"].task
+    assert "big" not in sup.running                                # reaped, not orphaned
+    exit_code = (await db.fetchone(
+        "SELECT last_exit FROM fleet_agents WHERE address=?", ("big",)))[0]
+    assert exit_code == 0
+    tail_lines = sup._tails["big"].split("\n")
+    assert tail_lines and all(len(l) <= 2000 for l in tail_lines)  # bounded
+
+
+async def test_stop_awaits_turns_so_final_exit_is_recorded(db, tmp_path):
+    """Issue 3: stop() must await in-flight turns so record_exit commits before the
+    caller closes the DB (no lost exit / no write-to-closed-connection)."""
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path))   # real spawn
+    await fleet.upsert("sleeper",
+                       command=[sys.executable, "-c", "import time; time.sleep(30)"])
+    await sup.run_now("sleeper")
+    await sup.stop()                                               # terminates + awaits the turn
+    assert not sup.running
+    last_exit = (await db.fetchone(
+        "SELECT last_exit FROM fleet_agents WHERE address=?", ("sleeper",)))[0]
+    assert last_exit is not None                                  # recorded before stop() returned

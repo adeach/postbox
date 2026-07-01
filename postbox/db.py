@@ -58,8 +58,14 @@ class Database:
 
     async def execute(self, sql: str, params: tuple = ()) -> None:
         async with self._write_lock:
-            await self.conn.execute(sql, params)
-            await self.conn.commit()
+            try:
+                await self.conn.execute(sql, params)
+                await self.conn.commit()
+            except Exception:
+                # a failed write (e.g. a constraint violation) must not leave an open
+                # transaction on the single shared connection for the next caller
+                await self.conn.rollback()
+                raise
 
     async def fetchone(self, sql: str, params: tuple = ()):
         async with self.conn.execute(sql, params) as cur:

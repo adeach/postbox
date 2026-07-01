@@ -48,3 +48,18 @@ async def test_observer_token_guards_observer_and_fleet(tmp_path, monkeypatch):
             assert (await c.get("/observer/agents?token=sekret")).status_code == 200  # EventSource path
             assert (await c.get("/fleet", headers={"X-Observer-Token": "nope"})).status_code == 401
             assert (await c.get("/agents")).status_code == 200          # bearer routes unaffected
+
+
+async def test_fleet_identity_cannot_be_renamed(tmp_path):
+    app = create_app(str(tmp_path / "data"))
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            await c.post("/fleet", json={"address": "alice"})
+            token = (await app.state.fleet.db.fetchone(
+                "SELECT token FROM fleet_agents WHERE address=?", ("alice",)))[0]
+            # the MCP server hides set_name for durable identities; if one tries anyway,
+            # the FK-referenced address can't change -> clean 409, not a 500
+            r = await c.patch("/agents/self",
+                              headers={"Authorization": f"Bearer {token}"},
+                              json={"name": "alice2"})
+            assert r.status_code == 409

@@ -187,10 +187,13 @@ def build_server():
         """Reply to a message, keeping it in the same thread."""
         return await session.tools.reply(message_id, body)
 
-    @mcp.tool()
-    async def set_name(name: str) -> dict:
-        """Set your display name so other agents can address you by it."""
-        return await session.tools.set_name(name)
+    # A durable/fleet identity (token provided) must NOT rename itself — its address
+    # is a fixed, referenced key. Only expose set_name for self-registering sessions.
+    if not token:
+        @mcp.tool()
+        async def set_name(name: str) -> dict:
+            """Set your display name so other agents can address you by it."""
+            return await session.tools.set_name(name)
 
     return mcp
 

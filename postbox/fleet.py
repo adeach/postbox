@@ -157,13 +157,14 @@ class FleetService:
 
 
 class _Turn:
-    __slots__ = ("proc", "started", "tail", "task")
+    __slots__ = ("proc", "started", "tail", "task", "buf")
 
-    def __init__(self, proc):
-        self.proc = proc
+    def __init__(self, proc=None):
+        self.proc = proc                                  # None while the slot is reserved
         self.started = time.monotonic()
         self.tail: deque[str] = deque(maxlen=TAIL_LINES)
         self.task: asyncio.Task | None = None
+        self.buf = ""                                     # partial (newline-less) output tail
 
 
 class Supervisor:
@@ -205,8 +206,14 @@ class Supervisor:
                 await t
         if self._fh is not None:
             self.bus.unsubscribe_all(self._fh)
-        for turn in list(self.running.values()):
-            await self._terminate(turn.proc)
+        # Terminate live turns, then AWAIT their supervisors so each turn's final
+        # record_exit() commits before the caller (lifespan) closes the DB.
+        turn_tasks = [tn.task for tn in self.running.values() if tn.task]
+        for tn in list(self.running.values()):
+            if tn.proc is not None:
+                await self._terminate(tn.proc)
+        if turn_tasks:
+            await asyncio.gather(*turn_tasks, return_exceptions=True)
 
     def poke(self) -> None:
         self._wake.set()
@@ -245,7 +252,8 @@ class Supervisor:
             last = self._last_run.get(address)
             if last is not None and (time.monotonic() - last) < self.s.agent_cooldown:
                 continue                                  # bounds even an exit-0 no-op loop
-            await self._launch(row)
+            self.running[address] = _Turn()               # reserve the slot SYNCHRONOUSLY (before any await)
+            await self._launch(row, address)
 
     async def run_now(self, address: str) -> str:
         """Force a turn now (UI 'Run'): ignores unread/cooldown/backoff, still
@@ -254,21 +262,24 @@ class Supervisor:
             return "already-running"
         if len(self.running) >= self.s.max_concurrent:
             return "at-capacity"
+        self.running[address] = _Turn()                   # reserve BEFORE the first await (no double-spawn)
         row = await self.fleet.launch_row(address)
         if row is None:
+            self.running.pop(address, None)
             raise KeyError(address)
-        await self._launch(row)
+        await self._launch(row, address)
         return "started"
 
     async def kill(self, address: str) -> bool:
         turn = self.running.get(address)
-        if turn is None:
+        if turn is None or turn.proc is None:
             return False
         await self._terminate(turn.proc)
         return True
 
-    async def _launch(self, row: dict) -> None:
-        address = row["address"]
+    async def _launch(self, row: dict, address: str) -> None:
+        """Fill in the pre-reserved slot at self.running[address] with a live turn.
+        The reservation is already in place, so guards can't double-spawn."""
         template = json.loads(row["command_json"])
         argv = [a.replace("{prompt}", PROMPT) for a in template]
         env = {**os.environ, "POSTBOX_TOKEN": row["token"],
@@ -280,26 +291,53 @@ class Supervisor:
             proc = await self._spawn(argv, row["cwd"], env)
         except Exception as e:                            # e.g. binary not found
             log.warning("spawn failed for %s: %r", address, e)
+            self.running.pop(address, None)               # roll back the reservation
             self._tails[address] = f"spawn error: {e}"
             await self.fleet.record_exit(address, 127, self.s)
             self.poke()
             return
-        turn = _Turn(proc)
-        self.running[address] = turn
+        turn = self.running.get(address)
+        if turn is None:                                  # reservation vanished (shutdown) — clean up
+            with contextlib.suppress(Exception):
+                await self._terminate(proc)
+            return
+        turn.proc = proc
+        turn.started = time.monotonic()
         turn.task = asyncio.create_task(self._supervise(address, turn))
 
+    def _append_tail(self, turn: _Turn, chunk: bytes) -> None:
+        """Bounded output tail: cap line length AND buffer growth so a single huge
+        newline-less line can't blow up memory."""
+        turn.buf += chunk.decode(errors="replace")
+        while "\n" in turn.buf:
+            line, turn.buf = turn.buf.split("\n", 1)
+            turn.tail.append(line[:2000])
+        if len(turn.buf) > 4096:                          # long line, no newline yet — flush a bounded slice
+            turn.tail.append(turn.buf[:2000])
+            turn.buf = ""
+
     async def _supervise(self, address: str, turn: _Turn) -> None:
+        rc = -1
         try:
-            if turn.proc.stdout is not None:
-                async for line in turn.proc.stdout:
-                    turn.tail.append(line.decode(errors="replace").rstrip("\n"))
-            rc = await turn.proc.wait()
+            try:
+                if turn.proc.stdout is not None:
+                    # Read fixed-size CHUNKS (not lines): readline raises on a >64 KB
+                    # line, which would strand the child. Chunks always drain to EOF.
+                    while True:
+                        chunk = await turn.proc.stdout.read(4096)
+                        if not chunk:
+                            break
+                        self._append_tail(turn, chunk)
+            finally:
+                rc = await turn.proc.wait()               # ALWAYS reap, even if draining raised
         except asyncio.CancelledError:
             raise
         except Exception as e:
             log.warning("turn for %s errored: %r", address, e)
-            rc = -1
-        self.running.pop(address, None)
+        if turn.buf:
+            turn.tail.append(turn.buf[:2000])
+        if self.running.get(address) is turn:             # pop only if WE still own the slot
+            self.running.pop(address, None)
         if turn.tail:
             self._tails[address] = "\n".join(turn.tail)
         await self.fleet.record_exit(address, rc, self.s)
@@ -308,7 +346,7 @@ class Supervisor:
     async def _reap_overruns(self) -> None:
         now = time.monotonic()
         for turn in list(self.running.values()):
-            if now - turn.started > self.s.max_runtime:
+            if turn.proc is not None and now - turn.started > self.s.max_runtime:
                 await self._terminate(turn.proc)
 
     async def _spawn_subprocess(self, argv: list[str], cwd: str | None, env: dict):
