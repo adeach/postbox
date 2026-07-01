@@ -47,7 +47,7 @@ class FakeProc:
         self.returncode = None
         self._rc = rc
         self.stdout = None
-        self.pid = -1
+        self.pid = 2_000_000_000            # nonexistent pid → _terminate's getpgid raises (caught)
         self._exit = asyncio.Event()
 
     async def wait(self):
@@ -282,3 +282,60 @@ async def test_stop_awaits_turns_so_final_exit_is_recorded(db, tmp_path):
     last_exit = (await db.fetchone(
         "SELECT last_exit FROM fleet_agents WHERE address=?", ("sleeper",)))[0]
     assert last_exit is not None                                  # recorded before stop() returned
+
+
+async def test_launch_failure_releases_reservation(db, tmp_path):
+    """NEW-1: a DB error between reserve and task-creation must release the slot,
+    not wedge the agent forever."""
+    stub = Stub()
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path), spawn=stub)
+    await fleet.upsert("alice")
+
+    async def boom(_addr):
+        raise RuntimeError("db hiccup")
+    good = fleet.mark_run
+    fleet.mark_run = boom
+    await sup.run_now("alice")                     # _launch's mark_run raises internally
+    assert "alice" not in sup.running              # reservation released, not wedged
+    fleet.mark_run = good
+    assert await sup.run_now("alice") == "started"  # fully recovers
+    assert "alice" in sup.running
+    await finish_all(sup, stub)
+
+
+async def test_run_now_launch_row_error_releases_reservation(db, tmp_path):
+    """NEW-1 (run_now path): launch_row raising must release the reservation."""
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path), spawn=Stub())
+    await fleet.upsert("alice")
+
+    async def boom(_addr):
+        raise RuntimeError("db down")
+    fleet.launch_row = boom
+    with pytest.raises(RuntimeError):
+        await sup.run_now("alice")
+    assert "alice" not in sup.running
+
+
+async def test_launch_during_stop_does_not_leak_a_turn(db, tmp_path):
+    """NEW-2: if a run_now is mid-_launch when stop() runs, no un-awaited supervise
+    task is created and the child is reaped."""
+    release = asyncio.Event()
+    spawned = []
+
+    async def slow_spawn(argv, cwd, env):
+        await release.wait()
+        p = FakeProc(0)
+        spawned.append(p)
+        return p
+
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path), spawn=slow_spawn)
+    await fleet.upsert("alice")
+    run = asyncio.create_task(sup.run_now("alice"))
+    await asyncio.sleep(0.05)                      # reserved, now blocked in slow_spawn
+    assert sup.running.get("alice") and sup.running["alice"].proc is None
+    stop = asyncio.create_task(sup.stop())         # shutdown sets _stopped
+    await asyncio.sleep(0.05)
+    release.set()                                  # _launch resumes after _stopped is set
+    await run
+    await stop
+    assert "alice" not in sup.running              # slot released; no un-awaited supervise task
