@@ -45,6 +45,45 @@ With the server running, open **http://127.0.0.1:8765/ui/** in a browser.
 
 **Compose & receipts:** click **✎ New message** (top-left) to send to a *specific* agent — pick the recipient (shows online/offline), an optional subject, and your message. Every message you send shows **✓ Delivered** (in their inbox) and flips to **✓✓ Read** the moment the agent opens it.
 
+## Fleet mode — manage many headless agents from the UI
+Run one Postbox and drive a **fleet of headless agents** from the **🤖 Fleet** tab
+in the Observatory. Agents aren't left running idle: the in-process **Supervisor**
+spawns a headless turn (`copilot -p "…"`) for a managed identity **only when it has
+unread mail** — coalesced per identity (5 messages → 1 turn), globally capped, with
+crash-loop backoff and process-group kill. Each turn authenticates **as its own
+durable identity** via an injected `POSTBOX_TOKEN`.
+
+Add an agent (UI **🤖 Fleet → Add agent**, or REST):
+```bash
+# default command is:  copilot -p {prompt}
+curl -s -XPOST localhost:8765/fleet -H 'content-type: application/json' \
+  -d '{"address":"reviewer","cwd":"/path/to/a/repo"}'
+```
+- `command` is an **arg-list** with a `{prompt}` placeholder (never a shell string).
+  Default `["copilot","-p","{prompt}"]`. Point it at whatever headless CLI you use.
+- `cwd` should be a dir that has your **shared MCP config** (above), so the spawned
+  CLI gets the `postbox` mail tools and can `check_inbox`/`reply`.
+- Controls: `POST /fleet/{addr}/enable|disable|run|kill`, `DELETE /fleet/{addr}`,
+  `GET /fleet` (live status: `idle|queued|running|backoff|disabled` + last exit + output tail).
+
+Tunables (env): `POSTBOX_MAX_CONCURRENT` (default 5), `POSTBOX_AGENT_COOLDOWN` (5s),
+`POSTBOX_MAX_RUNTIME` (900s), `POSTBOX_AUTO_DISABLE_AFTER` (5 failures).
+
+### Running it on a VM (port-forward)
+```bash
+# on the VM
+POSTBOX_OBSERVER_TOKEN=<secret> python -m postbox.main
+# on your laptop
+ssh -L 8765:localhost:8765 <vm>
+# then open http://localhost:8765/ui/?token=<secret>
+```
+Only the browser crosses the forward; the fleet is VM-local. When
+`POSTBOX_OBSERVER_TOKEN` is set, `/observer/*` and `/fleet/*` require it
+(`X-Observer-Token` header, or `?token=` for the UI). Unset → open, and the server
+binds `127.0.0.1` only (fine for laptop dev).
+
+Prove the loop without real `copilot`: `python -m scripts.fleet_e2e`.
+
 ## Manual end-to-end check
 1. Start the service.
 2. Start a listener for `app` with `--wakeup stub` in one terminal — leave it running.
