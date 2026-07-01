@@ -341,6 +341,19 @@ async def test_launch_during_stop_does_not_leak_a_turn(db, tmp_path):
     assert "alice" not in sup.running              # slot released; no un-awaited supervise task
 
 
+async def test_launch_strips_tmux_pane_from_child_env(db, tmp_path, monkeypatch):
+    """Fleet turns are headless — they must NOT inherit TMUX_PANE, else the spawned
+    agent's MCP sets up a tmux wakeup and pokes the terminal that launched the server."""
+    monkeypatch.setenv("TMUX_PANE", "%99")
+    stub = Stub()
+    _, _, _, fleet, sup = await build(db, mk_settings(tmp_path), spawn=stub)
+    await fleet.upsert("alice")
+    await sup.run_now("alice")
+    assert "TMUX_PANE" not in stub.calls[0]["env"]        # not inherited
+    assert stub.calls[0]["env"]["POSTBOX_TOKEN"]          # identity token still injected
+    await finish_all(sup, stub)
+
+
 async def test_cancellation_during_launch_releases_reservation(db, tmp_path):
     """Residual: a CancelledError mid-_launch (client disconnects POST /run) must
     still release the reserved slot — the `finally` covers cancellation too."""

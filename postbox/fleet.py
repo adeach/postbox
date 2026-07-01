@@ -294,6 +294,7 @@ class Supervisor:
             env = {**os.environ, "POSTBOX_TOKEN": row["token"],
                    "POSTBOX_URL": self.s.public_url}
             env.pop("POSTBOX_NAME", None)             # token wins; don't let a name fight it
+            env.pop("TMUX_PANE", None)                # headless turn: never inherit a pane / set up a tmux poke
             self._last_run[address] = time.monotonic()
             await self.fleet.mark_run(address)
             proc = await self._spawn(argv, row["cwd"], env)

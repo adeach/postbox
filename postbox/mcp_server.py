@@ -147,7 +147,9 @@ def build_server():
     pane = os.environ.get("TMUX_PANE")          # inherited inside a tmux pane
     name = os.environ.get("POSTBOX_NAME")       # optional desired name
     client = httpx.AsyncClient(base_url=url)
-    session = Session(client, pane=pane, desired_name=name, token=token)
+    # A durable/fleet identity (token provided) is headless spawn-on-arrival — it must
+    # never set up a tmux wakeup on an inherited pane, so ignore TMUX_PANE in that mode.
+    session = Session(client, pane=(None if token else pane), desired_name=name, token=token)
 
     @asynccontextmanager
     async def lifespan(_server):
