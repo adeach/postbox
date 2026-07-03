@@ -256,7 +256,8 @@ async function refreshFleet(force){
       </div></div>`;
   }).join("") || `<div class="fnote">No fleet agents yet — add one above to have Postbox spawn headless turns on mail.</div>`;
   // directory: EVERY registered identity + live presence (which are online/running, who's in the fleet)
-  const dir = AGENTS.map(a=>{
+  // sorted by name so rows stay put — presence changes update the label in place, never reorder.
+  const dir = [...AGENTS].sort((a,b)=>a.name.localeCompare(b.name)).map(a=>{
     const human = isHuman(a.address), online = isOnline(a.address);
     const dot = human ? "#8a4fc4" : (online ? "#17a673" : "#b8bcc4");
     const meta = [human ? "person" : (online ? "online" : "offline"), inFleet.has(a.address) ? "in fleet" : ""].filter(Boolean).join(" · ");
