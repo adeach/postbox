@@ -204,7 +204,7 @@ async function setViewer(addr){
 }
 
 // ---- Fleet control panel (headless agents) ----
-let fleetTimer = null, fleetSig = "", fleetPausedUntil = 0;
+let fleetSig = "", fleetPausedUntil = 0;
 const FLEET_STATE = { running:["#17a673","running"], queued:["#e8912d","queued"],
   idle:["#3d9be0","ready"], backoff:["#e01e5a","backoff"], disabled:["#b8bcc4","disabled"] };
 
@@ -214,16 +214,17 @@ function openFleet(){
   $("mSub").textContent = "headless agents — a turn is spawned when they get mail";
   showComposer(false);
   renderSidebar();
-  // render the shell ONCE; the poll only rewrites #fleetList so it never eats a click / typed field
-  $("msgs").innerHTML = `<div class="fleet"><div class="faddbar">
+  // static shell; refresh is MANUAL (the ↻ button) so the list never flickers under you
+  $("msgs").innerHTML = `<div class="fleet">
+    <div class="faddbar">
       <input id="fAddr" placeholder="agent name (e.g. reviewer)" autocomplete="off">
       <input id="fCmd" placeholder="command — default: copilot -p {prompt}" autocomplete="off">
       <input id="fCwd" placeholder="cwd (optional)" autocomplete="off">
       <button data-act="fleetadd">Add agent</button>
-    </div><div id="fleetList"></div></div>`;
+      <button data-act="fleetrefresh" class="frefresh" title="Refresh fleet status + presence">↻ Refresh</button>
+    </div>
+    <div id="fleetList"></div></div>`;
   refreshFleet(true);
-  if(fleetTimer) clearInterval(fleetTimer);
-  fleetTimer = setInterval(()=>{ if(panel==="fleet") refreshFleet(); else { clearInterval(fleetTimer); fleetTimer=null; } }, 2000);
 }
 
 async function refreshFleet(force){
@@ -299,7 +300,7 @@ function connectLive(){
   const url = "/observer/events" + (OBS_TOKEN ? "?token="+encodeURIComponent(OBS_TOKEN) : "");
   const es = new EventSource(url);
   const refresh = async ()=>{
-    if(panel==="fleet"){ refreshFleet(); return; }
+    if(panel==="fleet") return;                 // Fleet is manual-refresh (the ↻ button)
     await loadThreads(); renderSidebar();
     if(openId) await showThread(openId);
   };
@@ -328,6 +329,7 @@ document.addEventListener("click", e=>{
   if(a==="asme") return setViewer(YOU);
   if(a==="setviewer") return setViewer(t.dataset.val);
   if(a==="showfleet") return openFleet();
+  if(a==="fleetrefresh") return refreshFleet(true);
   if(a==="fleet") return fleetAction(t.dataset.op, t.dataset.val);
   if(a==="fleetadd") return addFleetAgent();
 });
