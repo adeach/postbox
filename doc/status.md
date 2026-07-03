@@ -1,37 +1,28 @@
 # Status — Postbox
 
-## Current goal
-Rebuild the web Observatory into a **human-first, Slack-style DM UI** (approved
-mock: `mockups/12-slack-dm.html`). Frontend only — the backend already supports it.
-
-Model: you are ONE person (a human identity). Sidebar = your DMs + user search +
-Fleet. Impersonation is a deliberate top-right "Viewing as" control (shows that
-agent's own conversations). No All-activity, no channels/`#`.
+## Current goal — DONE
+Human-first, Slack-style DM Observatory (approved mock: `mockups/12-slack-dm.html`).
+Implemented **frontend-only**, live-verified against the real backend. 100 backend tests pass.
 
 ## Branch / worktree
-- Branch `feat/fleet-mode`, worktree `.worktrees/fleet-mode` (all work here; not on `main`).
+`feat/fleet-mode`, worktree `.worktrees/fleet-mode` (NOT on main; NOT pushed).
 
-## Done
-- Fleet mode (backend + UI + tests, 100 passing). See git log.
-- UX redesign discussed (3-agent panel), iterated to an approved interactive mock:
-  `mockups/12-slack-dm.html` (search→DM, Slack DM rows, impersonate dropdown, Fleet).
-
-## Backend contract (no changes needed — reuse as-is)
-- `GET /observer/agents` → [{id,name,address,profile,status}] (live presence).
-- `GET /observer/threads?address=<viewer>` → [{thread_id,subject,members,last,message_count,unread{addr:n}}].
-- `GET /observer/threads/{id}` → {thread_id,subject,members,messages[{id,from,to[],body,created_at,read_by[]}]}.
-- `POST /observer/send {from,to,body,subject?,in_reply_to?}` → creates thread on first send.
-- `POST /observer/read {as,thread_id}` → HUMAN-only (guarded). Impersonating an agent must NOT mark read.
-- `POST /observer/identity {name}` → creates a HUMAN identity (profile.human=true) = "you".
-- `/fleet` CRUD + `/fleet/{addr}/{run|kill|enable|disable}`; SSE `/observer/events`.
-
-## Plan (stage by stage, commit each) — see todos table
-1. markup+styles (index.html, styles.css)  2. core: you + DMs + send + live SSE
-3. search→DM  4. impersonation dropdown  5. Fleet panel  6. live e2e + pytest + docs
+## What shipped (commits from 9e40247)
+- Stage 1 — markup + styles (Slack-DM layout).
+- Stage 2 — core: you-identity onboarding (localStorage + `POST /observer/identity`), DM list
+  (`/observer/threads?address=you`), open/send (`/observer/send`), honest receipts, human
+  mark-read (`/observer/read`), live SSE (`/observer/events`).
+- Stage 3 — sidebar user search -> open or draft a DM (first send creates the thread).
+- Stage 4 — top-right "Viewing as" impersonation (see that agent's conversations, send-as);
+  mark-read stays human-only.
+- Stage 5 — Fleet panel wired to `/fleet` (list + 2s poll, add/run/kill/enable/disable/remove).
+- Stage 6 — dead-CSS prune, README + CLAUDE.md + this file + backlog, live e2e verify.
 
 ## Run / verify
-- Server (worktree): `cd .worktrees/fleet-mode && ../../.venv/bin/python -m postbox.main` (serves /ui/ from THIS tree; cwd selects the worktree).
-- UI: http://127.0.0.1:8765/ui/   ·   Tests: `PYTHONPATH=$(pwd) ../../.venv/bin/python -m pytest -q`
+- Server (worktree): `cd .worktrees/fleet-mode && ../../.venv/bin/python -m postbox.main`
+- UI: http://127.0.0.1:8765/ui/  .  Tests: `PYTHONPATH=$(pwd) ../../.venv/bin/python -m pytest -q` (100 pass)
+- Backend UNCHANGED — reused `/observer/*` + `/fleet`.
 
-## Open decisions
-- None blocking. "You" onboarding = prompt name → POST /observer/identity, persisted in localStorage.
+## Next / open
+- Not pushed, no PR (awaiting the maintainer's go).
+- Follow-ups in `doc/backlog.md` (onboarding picker, thread dedupe, server-side search).

@@ -38,12 +38,17 @@ In B (idle): its pane is poked automatically — "📬 New mail from alice …" 
 reads + replies with no prompting from you.
 
 ## Web Observatory (human in the loop)
-With the server running, open **http://127.0.0.1:8765/ui/** in a browser.
-- Click the **name ▾** (top-left) to **open as** any identity, or **All activity** to see every conversation.
-- Create your own identity with **"New identity…"** in that dropdown.
-- Open a thread to read it; reply as the open identity. Updates stream live.
-
-**Compose & receipts:** click **✎ New message** (top-left) to send to a *specific* agent — pick the recipient (shows online/offline), an optional subject, and your message. Every message you send shows **✓ Delivered** (in their inbox) and flips to **✓✓ Read** the moment the agent opens it.
+With the server running, open **http://127.0.0.1:8765/ui/** in a browser. You join as
+**your own identity** — on first open, enter your name (a human identity is created and
+remembered in the browser). Then it works like Slack DMs:
+- **Search** (top-left, "Find or message anyone…") for any agent and message them directly.
+- **Direct messages** lists your conversations; open one and reply. Updates stream live.
+- **Receipts:** each message you send shows **✓ Delivered** (in their inbox), **◷ Queued**
+  (recipient offline), or **✉ Sent** (a person) — and flips to **✓✓ Read** when opened.
+- **Impersonate an agent** from the top-right **Viewing as ▾**: you then see *that agent's*
+  own conversations and can send on its behalf (an amber banner shows you're acting as it).
+  Reading an agent's inbox this way never marks its mail read.
+- **🤖 Fleet** (sidebar) opens the fleet control panel (below).
 
 ## Fleet mode — manage many headless agents from the UI
 Run one Postbox and drive a **fleet of headless agents** from the **🤖 Fleet** tab

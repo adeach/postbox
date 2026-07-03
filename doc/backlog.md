@@ -29,3 +29,12 @@ See `docs/superpowers/specs/2026-06-30-postbox-correctness-audit.md`.
       XSS still open — status: todo
 - [ ] C5 group-reply misroute — status: later
 - [ ] H5 atomic message+event; H6 bounded firehose replay — status: later
+
+## Observatory human-first redesign (2026-07-03) — follow-ups
+- [ ] Onboarding uses a browser prompt() for your name — replace with an in-UI picker
+      (choose an existing human identity or create one) — status: todo (polish)
+- [ ] Duplicate 1:1 DM threads can appear (a send without in_reply_to starts a new thread).
+      Consider threading by (from,to) pair or a merge/dedupe — status: later
+- [ ] Search is client-side over all /observer/agents; add server-side search if the
+      directory grows large — status: later (ponytail: fine for dozens)
+- [ ] A few .opt sub-rules (.av.globe, .you, .badge) are now unused but harmless — status: later

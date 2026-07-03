@@ -25,7 +25,7 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `postbox/api.py` — FastAPI app (`create_app`): REST routes, bearer auth, SSE endpoint, `/observer/*` routes + firehose SSE + static `/ui` mount.
 - `postbox/observer.py` — ObserverService: global (identity-agnostic) reads (agents, threads, detail) + create-identity + send-as for the web Observatory.
 - `postbox/fleet.py` — Fleet mode: `FleetService` (managed-agent registry CRUD + backoff policy) + `Supervisor` (in-process; reconciles on new mail, spawns headless turns via injected `POSTBOX_TOKEN`, coalesced per identity, global cap, crash-loop backoff, process-group kill).
-- `postbox/web/` — vanilla HTML/CSS/JS Slack-themed Observatory client (`index.html`, `styles.css`, `app.js`) served at `/ui/`.
+- `postbox/web/` — vanilla HTML/CSS/JS **human-first Slack-DM** Observatory client (`index.html`, `styles.css`, `app.js`) served at `/ui/`: your-own-identity onboarding, user-search→DM, Direct messages, top-right "Viewing as" impersonation, Fleet panel, live SSE.
 - `postbox/main.py` — uvicorn entrypoint (port 8765).
 - `postbox/mcp_server.py` — MCP stdio server (`MailTools` + `build_server`) exposing mail tools over REST.
 - `postbox/listener/wakeups.py` — wakeup strategies: stub, copilot_cli, copilot_app, os_notify.
@@ -45,6 +45,7 @@ v1 service implemented (2026-06-29). REST + SSE service, MCP server, and listene
 v2 implemented (2026-06-29): per-session auto-identity (token-less shared MCP config, `set_name`) + real-time tmux wakeup (idle pane poked on new mail).
 Observatory implemented (2026-06-30): Slack-themed web UI at `/ui/` (open-as-any-identity inbox, all-activity firehose, reply-as, live SSE) backed by `ObserverService` + `/observer/*` API (70 tests passing).
 Fleet mode implemented (2026-07-01): run dozens of headless agents from the UI — in-process `Supervisor` spawns `copilot -p` turns on new mail (per-identity coalesced, global cap, crash-loop backoff, process-group kill), each authenticating AS its durable identity via injected `POSTBOX_TOKEN`; `/fleet` API + 🤖 Fleet tab + optional `POSTBOX_OBSERVER_TOKEN` guard (99 tests + live `scripts/fleet_e2e.py`; code-reviewed, 4 findings fixed). On branch `feat/fleet-mode`.
+Observatory redesigned (2026-07-03): **human-first Slack-style DMs** — you join as your own identity; sidebar user-search → DM anyone; **Direct messages** list (Slack rows, no channels); top-right **"Viewing as"** impersonates an agent to see *its* conversations and send on its behalf (mark-read stays human-only); Fleet panel; live SSE. Removed the "open-as-anyone" switcher, All-activity firehose, and fake search/toolbar. Frontend-only rewrite reusing `/observer/*` + `/fleet` (100 tests still passing). Approved mock: `mockups/12-slack-dm.html`. On branch `feat/fleet-mode`.
 
 ## Stack
 Python + FastAPI (REST + SSE via sse-starlette), SQLite (WAL) via aiosqlite, official Python MCP SDK, httpx + httpx-sse (client side). Single `uvicorn` process.
