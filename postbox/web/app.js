@@ -180,6 +180,30 @@ async function openDm(addr){
   renderSidebar();
 }
 
+// Impersonation: deliberately act as another agent. Purely a client concept — the
+// observer API can read/send as any identity. Mark-read stays human-only (see showThread),
+// so viewing an agent's inbox never silently marks its mail read.
+function renderVas(){
+  const m = $("vasMenu");
+  let h = `<div class="mh">Viewing as</div>`
+    + `<div class="opt" data-act="asme"><span class="av person" style="background:${colorFor(YOU)}">${initials(nameOf(YOU))}</span><span class="nm">${esc(nameOf(YOU))} (you)</span>${!impersonating()?'<span class="ck">✓</span>':''}</div>`
+    + `<div class="sepm"></div><div class="mcap">Impersonate an agent</div>`;
+  AGENTS.filter(a=> a.address!==YOU && !a.profile?.human).forEach(a=>{
+    h += `<div class="opt" data-act="setviewer" data-val="${esc(a.address)}"><span class="av" style="background:${colorFor(a.address)}">${initials(a.name)}<span class="pres ${isOnline(a.address)?'':'off'}"></span></span><span class="nm">${esc(a.name)}</span>${viewer===a.address?'<span class="ck">✓</span>':''}</div>`;
+  });
+  m.innerHTML = h;
+}
+function toggleVas(){ renderVas(); $("vasMenu").classList.toggle("show"); }
+function closeVas(){ $("vasMenu").classList.remove("show"); }
+async function setViewer(addr){
+  closeVas(); closeSearch();
+  viewer = addr; openId = null; draftTo = null; panel = "chat";
+  await loadThreads();
+  renderSidebar();
+  openId = THREADS.length ? THREADS[0].thread_id : null;
+  if(openId) await showThread(openId); else emptyMain();
+}
+
 function connectLive(){
   const url = "/observer/events" + (OBS_TOKEN ? "?token="+encodeURIComponent(OBS_TOKEN) : "");
   const es = new EventSource(url);
@@ -198,13 +222,20 @@ $("cinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefau
 $("search").addEventListener("input", renderSearch);
 document.addEventListener("click", e=>{
   const t = e.target.closest("[data-act]");
-  if(!t){ if(!e.target.closest(".searchwrap")) closeSearch(); return; }
+  if(!t){
+    if(!e.target.closest(".searchwrap")) closeSearch();
+    if(!e.target.closest(".vas")) closeVas();
+    return;
+  }
   e.preventDefault();
   const a = t.dataset.act;
   if(a==="open") return showThread(t.dataset.val);
   if(a==="dm") return openDm(t.dataset.val);
   if(a==="send") return doSend();
-  // vas/asme/setviewer (Stage 4), showfleet/fleet (Stage 5) wired in later stages
+  if(a==="vas") return toggleVas();
+  if(a==="asme") return setViewer(YOU);
+  if(a==="setviewer") return setViewer(t.dataset.val);
+  // showfleet/fleet (Stage 5) wired next
 });
 
 (async function boot(){
