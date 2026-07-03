@@ -220,8 +220,8 @@ function openFleet(){
       <input id="fAddr" placeholder="agent name (e.g. reviewer)" autocomplete="off">
       <input id="fCmd" placeholder="command — default: copilot -p {prompt}" autocomplete="off">
       <input id="fCwd" placeholder="cwd (optional)" autocomplete="off">
-      <button data-act="fleetadd">Add agent</button>
-      <button data-act="fleetrefresh" class="frefresh" title="Refresh fleet status + presence">↻ Refresh</button>
+      <button data-act="fleetadd" class="fbtn primary">Add agent</button>
+      <button data-act="fleetrefresh" class="fbtn" title="Refresh fleet status + presence">↻ Refresh</button>
     </div>
     <div id="fleetList"></div></div>`;
   refreshFleet(true);
@@ -244,18 +244,22 @@ async function refreshFleet(force){
     const meta = [a.last_exit!=null?`exit ${a.last_exit}`:"", a.fail_count?`fails ${a.fail_count}`:"",
                   a.last_run?("ran "+a.last_run.slice(11,19)):""].filter(Boolean).join(" · ");
     return `<div class="frow${a.enabled?"":" off"}">
-      <span class="fdot" style="background:${a.enabled?col:'#b8bcc4'}" title="${lbl}"></span>
-      <div class="fmain"><div class="fname">${esc(a.address)}<span class="fstate">${a.enabled?lbl:"disabled"}</span></div>
-        <div class="fcmd">${esc((a.command||[]).join(" "))}${a.cwd?` <span class="fcwd">@ ${esc(a.cwd)}</span>`:""}</div>
-        ${meta?`<div class="fmeta">${esc(meta)}</div>`:""}
-        ${a.tail?`<pre class="ftail">${esc(a.tail)}</pre>`:""}</div>
-      <div class="fbtns">
-        <button data-act="fleet" data-op="run" data-val="${esc(a.address)}" ${running?"disabled":""} title="Force a turn now">Run now</button>
-        <button data-act="fleet" data-op="kill" data-val="${esc(a.address)}" ${running?"":"disabled"} title="Stop the current turn">Kill</button>
-        <button data-act="fleet" data-op="${a.enabled?"disable":"enable"}" data-val="${esc(a.address)}" title="${a.enabled?'Stop auto-running on new mail':'Auto-run a turn when mail arrives'}">${a.enabled?"Disable":"Enable"}</button>
-        <button data-act="fleet" data-op="remove" data-val="${esc(a.address)}" class="danger" title="Remove from fleet">✕</button>
-      </div></div>`;
-  }).join("") || `<div class="fnote">No fleet agents yet — add one above to have Postbox spawn headless turns on mail.</div>`;
+      <div class="frtop">
+        <span class="fdot" style="background:${col}"></span>
+        <span class="fname">${esc(a.address)}</span>
+        <span class="fpill ${esc(a.state)}">${esc(lbl)}</span>
+        <div class="fbtns">
+          <button data-act="fleet" data-op="run" data-val="${esc(a.address)}" ${running?"disabled":""} title="Force a turn now">Run now</button>
+          <button data-act="fleet" data-op="kill" data-val="${esc(a.address)}" ${running?"":"disabled"} title="Stop the current turn">Kill</button>
+          <button data-act="fleet" data-op="${a.enabled?"disable":"enable"}" data-val="${esc(a.address)}" title="${a.enabled?'Stop auto-running on new mail':'Auto-run when mail arrives'}">${a.enabled?"Disable":"Enable"}</button>
+          <button data-act="fleet" data-op="remove" data-val="${esc(a.address)}" class="danger" title="Remove from fleet">✕</button>
+        </div>
+      </div>
+      <div class="fcmd">${esc((a.command||[]).join(" "))}${a.cwd?` <span class="fcwd">@ ${esc(a.cwd)}</span>`:""}</div>
+      ${meta?`<div class="fmeta">${esc(meta)}</div>`:""}
+      ${a.tail?`<details class="ftaild"${running?" open":""}><summary>Latest output</summary><pre class="ftail">${esc(a.tail)}</pre></details>`:""}
+    </div>`;
+  }).join("") || `<div class="fnote">No fleet agents yet — add one above and Postbox will spawn a headless turn when it gets mail.</div>`;
   // directory: EVERY registered identity + live presence (which are online/running, who's in the fleet)
   // sorted by name so rows stay put — presence changes update the label in place, never reorder.
   const dir = [...AGENTS].sort((a,b)=>a.name.localeCompare(b.name)).map(a=>{
@@ -264,8 +268,8 @@ async function refreshFleet(force){
     const meta = [human ? "person" : (online ? "online" : "offline"), inFleet.has(a.address) ? "in fleet" : ""].filter(Boolean).join(" · ");
     return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span><span class="meta">${esc(meta)}</span></div>`;
   }).join("") || `<div class="fnote">No agents registered yet.</div>`;
-  host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">— spawned on new mail</span></div>${rows}`
-    + `<div class="fgrp">All registered agents <span class="fgc">— everyone with an inbox</span></div><div class="fdir">${dir}</div>`;
+  host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
+    + `<div class="fgrp">All registered agents <span class="fgc">${AGENTS.length} with an inbox</span></div><div class="fdir">${dir}</div>`;
 }
 
 async function addFleetAgent(){

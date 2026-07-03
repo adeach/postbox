@@ -5,7 +5,7 @@ Human-first, Slack-style DM Observatory (approved mock: `mockups/12-slack-dm.htm
 Implemented **frontend-only**, live-verified against the real backend. 100 backend tests pass.
 
 ## Branch / worktree
-`feat/fleet-mode`, worktree `.worktrees/fleet-mode` (NOT on main; NOT pushed).
+Merged into `main` in the main repo (2026-07-03); the `.worktrees/fleet-mode` worktree was closed. Branch `feat/fleet-mode` still exists (== main). NOT pushed.
 
 ## What shipped (commits from 9e40247)
 - Stage 1 — markup + styles (Slack-DM layout).
