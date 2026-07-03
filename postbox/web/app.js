@@ -23,7 +23,7 @@ let viewer = null;                                 // identity we're viewing/sen
 let THREADS = [];
 let openId = null;
 let panel = "chat";                                // chat | fleet (Stage 5)
-let _lastMsgId = null, _openOther = null;
+let _lastMsgId = null, _openOther = null, draftTo = null;
 
 const agentByAddr = a => AGENTS.find(x=>x.address===a) || {address:a, name:a, status:"offline", profile:null};
 const nameOf   = a => agentByAddr(a).name;
@@ -105,7 +105,7 @@ function emptyMain(){
 }
 
 async function showThread(id){
-  openId = id; panel = "chat";
+  openId = id; panel = "chat"; draftTo = null;
   const d = await j("/observer/threads/"+encodeURIComponent(id));
   const o = (d.members||[]).find(m=>m!==viewer) || (d.members||[])[0] || "";
   _openOther = o;
@@ -151,6 +151,35 @@ async function doSend(){
   }
 }
 
+// Slack-style quick switcher: find anyone and DM them (opens the existing thread, or a draft).
+function renderSearch(){
+  const res = $("searchRes"), q = ($("search").value||"").trim().toLowerCase();
+  if(!q){ res.style.display="none"; res.innerHTML=""; return; }
+  const hits = AGENTS.filter(a=> a.address!==viewer
+    && (a.name.toLowerCase().includes(q) || a.address.toLowerCase().includes(q)));
+  res.style.display = "block";
+  res.innerHTML = hits.length
+    ? hits.map(a=>`<div class="sres" data-act="dm" data-val="${esc(a.address)}"><span class="dav" style="background:${colorFor(a.address)}">${initials(a.name)}</span>${esc(a.name)}<span class="smeta">${isHuman(a.address)?'person':(isOnline(a.address)?'online':'offline')}</span></div>`).join("")
+    : `<div class="sempty">No one matches “${esc(q)}”</div>`;
+}
+function closeSearch(){ $("search").value=""; $("searchRes").style.display="none"; $("searchRes").innerHTML=""; }
+
+async function openDm(addr){
+  closeSearch();
+  const t = THREADS.find(x=> (x.members||[]).length===2 && x.members.includes(viewer) && x.members.includes(addr));
+  if(t) return showThread(t.thread_id);
+  // no thread yet — show a draft; the first send creates the real thread
+  panel="chat"; openId=null; draftTo=addr; _openOther=addr; _lastMsgId=null;
+  $("mTitle").textContent = nameOf(addr);
+  $("mSub").textContent = isHuman(addr) ? "person" : (isOnline(addr) ? "online" : "offline");
+  $("msgs").innerHTML = `<div class="empty"><div class="emptybox"><div class="et">Message ${esc(nameOf(addr))}</div><div class="eh">This is the start of your direct message${impersonating()?` as ${esc(nameOf(viewer))}`:''}. Say hi 👋</div></div></div>`;
+  showComposer(true);
+  $("cinput").value = "";
+  $("cinput").placeholder = `Message ${nameOf(addr)}${impersonating()?` as ${nameOf(viewer)}`:''}…`;
+  $("cinput").focus();
+  renderSidebar();
+}
+
 function connectLive(){
   const url = "/observer/events" + (OBS_TOKEN ? "?token="+encodeURIComponent(OBS_TOKEN) : "");
   const es = new EventSource(url);
@@ -166,13 +195,16 @@ function connectLive(){
 
 $("cinput").addEventListener("input", e=> $("send").classList.toggle("on", !!e.target.value.trim()));
 $("cinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doSend(); }});
+$("search").addEventListener("input", renderSearch);
 document.addEventListener("click", e=>{
-  const t = e.target.closest("[data-act]"); if(!t) return;
+  const t = e.target.closest("[data-act]");
+  if(!t){ if(!e.target.closest(".searchwrap")) closeSearch(); return; }
   e.preventDefault();
   const a = t.dataset.act;
   if(a==="open") return showThread(t.dataset.val);
+  if(a==="dm") return openDm(t.dataset.val);
   if(a==="send") return doSend();
-  // search (Stage 3), vas/asme/setviewer (Stage 4), showfleet/fleet (Stage 5) wired in later stages
+  // vas/asme/setviewer (Stage 4), showfleet/fleet (Stage 5) wired in later stages
 });
 
 (async function boot(){
