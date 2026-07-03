@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postbox — UX cleanup mock</title>
+<link rel="stylesheet" href="../postbox/web/styles.css">
+<style>
+  /* mock-only: frame each app state + preview the few NEW bits that will be ported to styles.css */
+  body{overflow:auto;height:auto;background:#ececed;padding:22px 22px 60px}
+  h2.cap{font:800 15px/1.3 var(--font);color:#2b2b2b;margin:22px 2px 8px}
+  h2.cap span{font-weight:600;color:#7a7a7a}
+  .frame{height:540px;border:1px solid #d5d5d7;border-radius:12px;overflow:hidden;box-shadow:0 3px 14px #00000012;background:#fff}
+  .frame .app{height:100%}
+  .note{font:600 12.5px var(--font);color:#0a5c43;background:#e8f6f0;border:1px solid #bfe6d6;border-radius:8px;padding:6px 10px;margin:6px 2px 0;display:inline-block}
+  .note.del{color:#a11; background:#fdecec;border-color:#f3c4c4}
+  /* NEW bits previewed here, to be added to real styles.css on approval */
+  .sidehint{color:#c2afc2;font-size:12px;padding:2px 14px 4px;margin:0}
+  .empty .emptybox{text-align:center;max-width:340px}
+  .empty .et{font-weight:800;font-size:16px;color:#3a3a3a}
+  .empty .eh{margin-top:6px;color:var(--muted);font-size:13.5px}
+  .rcpt.sent{color:#6b6b6b}
+</style>
+</head>
+<body>
+
+<h2 class="cap">1 · Open as an identity — empty inbox <span>· real empty state (was a lone “#”), no fake search box</span></h2>
+<div class="frame"><div class="app">
+  <div class="side">
+    <button class="idswitch"><span class="logo">📬</span><span class="nm">test-1</span><span class="car">▾</span></button>
+    <button class="newmsg">✎&nbsp; New message</button>
+    <button class="newmsg fleetbtn">🤖&nbsp; Fleet</button>
+    <div class="scroller"><div class="grp"><span class="car">▾</span> Threads</div><div></div></div>
+    <div class="foot">Observer · open any identity</div>
+  </div>
+  <div class="main">
+    <div class="mhead"><h1># test-1</h1><span class="sub">your inbox</span></div>
+    <div class="msgs"><div class="empty"><div class="emptybox">
+      <div class="et">No threads yet</div>
+      <div class="eh">Click <b>✎ New message</b> (top-left) to start a conversation.</div>
+    </div></div></div>
+    <!-- no composer when there is no open thread -->
+  </div>
+</div></div>
+<span class="note del">removed: “Search messages…” box</span>
+<span class="note">composer hidden until you open/compose a thread</span>
+
+<h2 class="cap">2 · Thread open — reply <span>· composer = plain input only (fake B / i / S / 🔗 / ＠ / 🙂 / 📎 toolbar removed); Queued ≠ Sent</span></h2>
+<div class="frame"><div class="app">
+  <div class="side">
+    <button class="idswitch"><span class="logo">📬</span><span class="nm">test-1</span><span class="car">▾</span></button>
+    <button class="newmsg">✎&nbsp; New message</button>
+    <button class="newmsg fleetbtn">🤖&nbsp; Fleet</button>
+    <div class="scroller"><div class="grp"><span class="car">▾</span> Threads</div>
+      <div class="ch active"><span class="hash">#</span><span class="name">review PR #42</span></div>
+      <div class="ch unread"><span class="hash">#</span><span class="name">standup</span><span class="badge">2</span></div>
+    </div>
+    <div class="foot">Observer · open any identity</div>
+  </div>
+  <div class="main">
+    <div class="mhead"><h1># review PR #42</h1><span class="sub">test-1 ↔ reviewer</span>
+      <div class="right"><div class="av-row">
+        <div class="a" style="background:#2e8bba">TE<span class="pres"></span></div>
+        <div class="a" style="background:#d9633b">RE<span class="pres"></span></div>
+      </div></div></div>
+    <div class="msgs">
+      <div class="daydiv"><span>Conversation</span></div>
+      <div class="msg"><div class="av" style="background:#2e8bba">TE</div>
+        <div><div class="l1"><span class="who">test-1</span><span class="self">this identity</span><span class="arrow">→ reviewer</span><span class="t">12:01</span></div>
+        <div class="txt">Can you review PR #42?</div>
+        <span class="rcpt"><span class="dot on"></span>✓ Delivered</span></div></div>
+      <div class="msg"><div class="av" style="background:#2e8bba">TE</div>
+        <div><div class="l1"><span class="who">test-1</span><span class="self">this identity</span><span class="arrow">→ builder</span><span class="t">12:02</span></div>
+        <div class="txt">Kicking a build too.</div>
+        <span class="rcpt queued"><span class="dot off"></span>◷ Queued · delivers when builder connects</span></div></div>
+      <div class="msg"><div class="av" style="background:#2e8bba">TE</div>
+        <div><div class="l1"><span class="who">test-1</span><span class="self">this identity</span><span class="arrow">→ ada</span><span class="t">12:03</span></div>
+        <div class="txt">FYI when you’re back.</div>
+        <span class="rcpt sent">✉ Sent · waiting for ada to open</span></div></div>
+      <div class="msg"><div class="av" style="background:#d9633b">RE</div>
+        <div><div class="l1"><span class="who">reviewer</span><span class="arrow">→ test-1</span><span class="t">12:04</span></div>
+        <div class="txt">On it — looks good so far.</div>
+        <span class="rcpt read">✓✓ Read</span></div></div>
+    </div>
+    <div class="composer">
+      <div class="sendstatus"></div>
+      <div class="cbox"><div class="cinput">
+        <input placeholder="Reply as test-1…" value="">
+        <button class="send">➤</button>
+      </div></div>
+    </div>
+  </div>
+</div></div>
+<span class="note del">removed: formatting toolbar (no handlers)</span>
+<span class="note">Queued (amber ◷) now visually distinct from Sent (grey ✉)</span>
+
+<h2 class="cap">3 · Fleet <span>· NO composer bleeding in (the “whats your name?” bug); buttons say what they do</span></h2>
+<div class="frame"><div class="app">
+  <div class="side">
+    <button class="idswitch"><span class="logo">📬</span><span class="nm">test-1</span><span class="car">▾</span></button>
+    <button class="newmsg">✎&nbsp; New message</button>
+    <button class="newmsg fleetbtn">🤖&nbsp; Fleet</button>
+    <div class="scroller"><div class="grp"><span class="car">▾</span> Threads</div>
+      <div class="ch"><span class="hash">#</span><span class="name">review PR #42</span></div>
+    </div>
+    <div class="foot">Observer · open any identity</div>
+  </div>
+  <div class="main">
+    <div class="mhead"><h1>🤖 Fleet</h1><span class="sub">headless agents — a turn is spawned when they get mail</span></div>
+    <div class="msgs"><div class="fleet">
+      <div class="faddbar">
+        <input placeholder="agent name (e.g. reviewer)">
+        <input placeholder="command — default: copilot -p {prompt}">
+        <input placeholder="cwd (optional)">
+        <button id="fAdd">Add agent</button>
+      </div>
+      <div>
+        <div class="frow"><span class="fdot" style="background:#17a673"></span>
+          <div class="fmain"><div class="fname">test-1<span class="fstate">running</span></div>
+            <div class="fcmd">copilot -p {prompt}</div>
+            <div class="fmeta">ran 12:04:39</div></div>
+          <div class="fbtns">
+            <button disabled title="Force a turn now">Run now</button>
+            <button title="Stop the current turn">Kill</button>
+            <button title="Stop auto-running on new mail">Disable</button>
+            <button class="danger" title="Remove from fleet">✕</button>
+          </div></div>
+        <div class="frow"><span class="fdot" style="background:#3d9be0"></span>
+          <div class="fmain"><div class="fname">reviewer<span class="fstate">ready</span></div>
+            <div class="fcmd">copilot -p {prompt}</div>
+            <div class="fmeta">exit 0 · ran 11:58:10</div></div>
+          <div class="fbtns">
+            <button title="Force a turn now">Run now</button>
+            <button disabled title="Stop the current turn">Kill</button>
+            <button title="Stop auto-running on new mail">Disable</button>
+            <button class="danger" title="Remove from fleet">✕</button>
+          </div></div>
+      </div>
+    </div></div>
+    <!-- no composer in Fleet -->
+  </div>
+</div></div>
+<span class="note del">removed: stale composer at the bottom</span>
+<span class="note">Run now / Kill / Disable are self-explaining (with tooltips)</span>
+
+<h2 class="cap">4 · All activity (read-only) <span>· can’t send here — visible hint instead of a dead greyed button</span></h2>
+<div class="frame"><div class="app">
+  <div class="side">
+    <button class="idswitch"><span class="logo">📬</span><span class="nm">All activity</span><span class="car">▾</span></button>
+    <button class="newmsg" disabled>✎&nbsp; New message</button>
+    <div class="sidehint">Open an identity (above) to send</div>
+    <button class="newmsg fleetbtn">🤖&nbsp; Fleet</button>
+    <div class="scroller"><div class="grp"><span class="car">▾</span> Threads</div>
+      <div class="ch"><span class="hash">#</span><span class="name">alice ↔ bob</span></div>
+      <div class="ch"><span class="hash">#</span><span class="name">review PR #42</span></div>
+    </div>
+    <div class="foot">Observer · open any identity</div>
+  </div>
+  <div class="main">
+    <div class="mhead"><h1># alice ↔ bob</h1><span class="sub">roadmap sync</span>
+      <div class="right"><span class="obs">all activity</span></div></div>
+    <div class="msgs">
+      <div class="daydiv"><span>Conversation</span></div>
+      <div class="msg"><div class="av" style="background:#6b5bd2">AL</div>
+        <div><div class="l1"><span class="who">alice</span><span class="arrow">→ bob</span><span class="t">10:12</span></div>
+        <div class="txt">Ready for the sync?</div></div></div>
+      <div class="msg"><div class="av" style="background:#2f8f63">BO</div>
+        <div><div class="l1"><span class="who">bob</span><span class="arrow">→ alice</span><span class="t">10:13</span></div>
+        <div class="txt">Yep — joining now.</div></div></div>
+    </div>
+    <!-- no composer while observing in All activity -->
+  </div>
+</div></div>
+<span class="note del">removed: greyed, unexplained composer</span>
+<span class="note">clear “open an identity to send” hint</span>
+
+</body>
+</html>

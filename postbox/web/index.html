@@ -8,35 +8,34 @@
 <body>
 <div class="app">
   <div class="side">
-    <button class="idswitch" id="idSwitch">
-      <span class="logo">📬</span>
-      <span class="nm" id="sideName">…</span><span class="car">▾</span>
-      <span class="you" id="youTag" style="display:none">you</span>
-    </button>
-    <div class="idmenu" id="idMenu"></div>
-    <button class="newmsg" id="newMsg">✎&nbsp; New message</button>
-    <button class="newmsg fleetbtn" id="fleetBtn">🤖&nbsp; Fleet</button>
-    <div class="search">Search messages…</div>
-    <div class="scroller">
-      <div class="grp"><span class="car">▾</span> Threads</div>
-      <div id="chList"></div>
+    <div class="wsname">📬 Postbox</div>
+    <div class="searchwrap">
+      <input id="search" placeholder="Find or message anyone…" autocomplete="off">
+      <div class="searchres" id="searchRes" style="display:none"></div>
     </div>
-    <div class="foot">Observer · open any identity</div>
+    <div class="scroller">
+      <div class="grp"><span class="car">▾</span> Direct messages</div>
+      <div id="dmList"></div>
+      <div class="navrow" id="navFleet" data-act="showfleet">🤖&nbsp; Fleet</div>
+    </div>
+    <div class="foot" id="foot"></div>
   </div>
   <div class="main">
     <div class="mhead">
-      <h1 id="mTitle"># </h1>
+      <h1 id="mTitle"></h1>
       <span class="sub" id="mSub"></span>
-      <div class="right"><div class="av-row" id="mAvs"></div><span class="obs" id="obsTag" style="display:none"></span></div>
+      <div class="vas">
+        <button class="vasbtn" id="vasBtn" data-act="vas">Viewing as:&nbsp;<b id="vasName">You</b> <span class="car">▾</span></button>
+        <div class="vasmenu" id="vasMenu"></div>
+      </div>
     </div>
     <div class="msgs" id="msgs"></div>
-    <div class="composer">
+    <div class="composer" id="composer">
       <div class="sendstatus" id="sendStatus"></div>
       <div class="cbox">
-        <div class="ctools"><b>B</b> <i>i</i> <s>S</s> <span>🔗</span> <span>＠</span> <span>🙂</span> <span>📎</span></div>
         <div class="cinput">
-          <input id="cinput" placeholder="Reply…" autocomplete="off">
-          <button class="send" id="send" title="Send">➤</button>
+          <input id="cinput" placeholder="Message…" autocomplete="off">
+          <button class="send" id="send" data-act="send" title="Send">➤</button>
         </div>
       </div>
     </div>

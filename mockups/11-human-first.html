@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postbox — human-first prototype</title>
+<link rel="stylesheet" href="../postbox/web/styles.css">
+<style>
+  /* prototype-only styling for the new bits; everything else reuses the real styles.css */
+  .protobar{background:#111;color:#eee;font:600 12.5px var(--font);padding:6px 14px;display:flex;gap:10px;align-items:center}
+  .protobar b{color:#fff}
+  .protobar .tag{background:#333;border-radius:20px;padding:2px 9px;color:#bdbdbd}
+  .app{height:calc(100vh - 31px)}
+  .youchip{font-size:10px;font-weight:800;padding:1px 7px;border-radius:9px;margin-left:2px}
+  .youchip.you{color:#caffea;background:#0a5c43}
+  .youchip.acting{color:#3a2a00;background:#ffcf5a}
+  .navrow{display:flex;align-items:center;gap:9px;padding:8px 15px;cursor:pointer;color:var(--side-ink);font-size:14.5px;font-weight:700}
+  .navrow:hover{background:var(--side-hover)}
+  .navrow.active{background:var(--side-active);color:#fff}
+  .navrow .ro{margin-left:auto;font-size:9.5px;font-weight:800;color:#e7d9e7;background:#ffffff26;padding:1px 7px;border-radius:9px;letter-spacing:.3px}
+  .navrow.active .ro{background:#ffffff33;color:#fff}
+  .navrow .b{margin-left:auto;background:var(--red);color:#fff;font-size:11px;font-weight:800;border-radius:10px;min-width:18px;text-align:center;padding:0 6px}
+  .actbar{display:flex;align-items:center;gap:10px;background:#fff5d6;border-bottom:1px solid #ffe29a;color:#7a5300;font-size:13px;font-weight:600;padding:8px 20px}
+  .actbar .stop{margin-left:auto;background:#fff;border:1px solid #e2c987;border-radius:7px;padding:3px 11px;font-weight:800;color:#7a5300;cursor:pointer}
+  .roNote{margin:12px 20px;color:var(--muted);font-size:12.5px;background:#f6f6f6;border:1px dashed #d7d7d7;border-radius:8px;padding:9px 12px}
+  .idmenu .mcap{font-size:10.5px;font-weight:800;color:#b06a00;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px 3px}
+  .idmenu .msub{font-size:11.5px;color:#8d8d8d;padding:0 10px 6px}
+</style>
+</head>
+<body>
+<div class="protobar"><b>Prototype</b> <span class="tag">dummy data · no backend</span> every button works exactly as the real app will — click around.</div>
+<div class="app">
+  <div class="side">
+    <button class="idswitch" data-act="menu"><span class="logo">📬</span><span class="nm" id="hdrName">Ada</span><span class="youchip you" id="hdrChip">you</span><span class="car">▾</span></button>
+    <div class="idmenu" id="menu"></div>
+    <button class="newmsg" data-act="compose">✎&nbsp; New message</button>
+    <div class="navrow" data-act="view" data-val="dm" id="navDm">💬&nbsp; Direct messages</div>
+    <div class="navrow" data-act="view" data-val="all" id="navAll"># All activity <span class="ro">read-only</span></div>
+    <div class="navrow" data-act="view" data-val="fleet" id="navFleet">🤖&nbsp; Fleet</div>
+    <div class="scroller"><div id="list"></div></div>
+    <div class="foot" id="foot">You’re signed in as Ada</div>
+  </div>
+  <div class="main">
+    <div class="mhead"><h1 id="mTitle"></h1><span class="sub" id="mSub"></span><div class="right"><div class="av-row" id="mAvs"></div><span class="obs" id="obsTag" style="display:none"></span></div></div>
+    <div id="banner"></div>
+    <div class="msgs" id="msgs"></div>
+    <div class="composer" id="composer">
+      <div class="sendstatus" id="sendStatus"></div>
+      <div class="cbox"><div class="cinput">
+        <input id="cinput" placeholder="Message…" autocomplete="off">
+        <button class="send" id="send" data-act="send" title="Send">➤</button>
+      </div></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ---------- dummy data ---------- */
+let ME = "Ada";
+const agents = {
+  Ada:      {name:"Ada",      kind:"human"},
+  alice:    {name:"alice",    kind:"agent", online:true},
+  builder:  {name:"builder",  kind:"agent", online:false},
+  reviewer: {name:"reviewer", kind:"agent", online:true},
+  "test-1": {name:"test-1",   kind:"agent", online:true},
+};
+let threads = [
+  {id:"t1", members:["Ada","alice"], subject:"", msgs:[
+    {from:"Ada", to:"alice", body:"At what time did you start?", t:"07:06", readBy:["alice"]},
+    {from:"alice", to:"Ada", body:"I started at 12:17 IST — what's your current working directory?", t:"07:06", readBy:[]},
+  ]},
+  {id:"t2", members:["Ada","test-1"], subject:"Where are you running?", msgs:[
+    {from:"Ada", to:"test-1", body:"Which host are you on?", t:"07:10", readBy:[]},
+  ]},
+  {id:"t3", members:["test-1","builder"], subject:"CI", msgs:[
+    {from:"test-1", to:"builder", body:"Can you kick a build?", t:"06:40", readBy:["builder"]},
+    {from:"builder", to:"test-1", body:"Building now — will report back.", t:"06:41", readBy:[]},
+  ]},
+  {id:"t4", members:["alice","reviewer"], subject:"PR #42", msgs:[
+    {from:"alice", to:"reviewer", body:"Could you review PR #42?", t:"05:30", readBy:["reviewer"]},
+  ]},
+];
+let fleet = [
+  {address:"test-1",   state:"running", cmd:"copilot -p {prompt}", lastRun:"12:04:39", enabled:true},
+  {address:"reviewer", state:"idle",    cmd:"copilot -p {prompt}", lastRun:"11:58:10", enabled:true, lastExit:0},
+];
+
+/* ---------- app state ---------- */
+let view = "dm";       // dm | all | fleet
+let acting = null;     // null = me ; else an agent address we're deliberately acting as
+let openId = null;
+let composeMode = false;
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => (s||"").replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+const actor = () => acting || ME;
+const isHuman = a => agents[a]?.kind === "human";
+const isOnline = a => agents[a]?.kind === "agent" && agents[a].online;
+const initials = n => n.replace(/[^a-z0-9]/gi,'').slice(0,2).toUpperCase();
+const palette = ["#2e8bba","#d9633b","#6b5bd2","#8a4fc4","#2f8f63","#b5495b"];
+const colorFor = a => palette[[...a].reduce((h,c)=>h+c.charCodeAt(0),0)%palette.length];
+const other = t => t.members.find(m=>m!==actor()) || t.members[0];
+const now = () => new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+const myThreads = () => threads.filter(t=>t.members.includes(actor()));
+const unread = t => t.msgs.filter(m=>m.to===actor() && m.from!==actor() && !seen.has(m)).length;
+const seen = new WeakSet(); // messages the current actor has "opened"
+
+function receipt(m){
+  if(m.from!==actor()) return "";
+  const r = m.to;
+  if((m.readBy||[]).includes(r)) return `<span class="rcpt read">✓✓ Read</span>`;
+  if(isHuman(r)) return `<span class="rcpt sent">✉ Sent · waiting for ${esc(r)} to open</span>`;
+  if(isOnline(r)) return `<span class="rcpt"><span class="dot on"></span>✓ Delivered</span>`;
+  return `<span class="rcpt queued"><span class="dot off"></span>◷ Queued · delivers when ${esc(r)} connects</span>`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const me = actor();
+  $("#hdrName").textContent = agents[me].name;
+  const chip = $("#hdrChip");
+  chip.textContent = acting ? "acting" : "you";
+  chip.className = "youchip " + (acting ? "acting" : "you");
+  $("#foot").innerHTML = acting
+    ? `Acting as <b>${esc(me)}</b> · <a href="#" data-act="stopact" style="color:#caffea">back to you</a>`
+    : `You’re signed in as ${esc(ME)}`;
+
+  $("#navDm").classList.toggle("active", view==="dm");
+  $("#navAll").classList.toggle("active", view==="all");
+  $("#navFleet").classList.toggle("active", view==="fleet");
+
+  // sidebar list
+  const list = $("#list"); list.innerHTML = "";
+  if(view==="fleet"){ /* fleet shown in main */ }
+  else {
+    const rows = view==="all" ? threads : myThreads();
+    const label = view==="all" ? "All conversations" : "Direct messages";
+    list.innerHTML = `<div class="grp"><span class="car">▾</span> ${label}</div>`;
+    rows.forEach(t=>{
+      const others = view==="all" ? t.members.join(" ↔ ") : t.members.filter(m=>m!==me).join(", ");
+      const un = view==="all" ? 0 : unread(t);
+      const row = document.createElement("div");
+      row.className = "ch" + (openId===t.id?" active":"") + (un?" unread":"");
+      row.innerHTML = `<span class="hash">#</span><span class="name">${esc(t.subject||others||"(no subject)")}</span>` + (un?`<span class="badge">${un}</span>`:"");
+      row.dataset.act="open"; row.dataset.val=t.id;
+      list.appendChild(row);
+    });
+  }
+  renderMain();
+}
+
+function renderMain(){
+  const me = actor();
+  $("#banner").innerHTML = acting
+    ? `<div class="actbar">🎭 You’re acting as <b>${esc(me)}</b> — messages send on its behalf.<button class="stop" data-act="stopact">Stop</button></div>`
+    : "";
+  if(view==="fleet") return renderFleet();
+
+  if(composeMode) return renderCompose();
+
+  if(!openId || !threads.find(t=>t.id===openId && (view==="all"||t.members.includes(me)))){
+    $("#mTitle").textContent = view==="all" ? "All activity" : "Direct messages";
+    $("#mSub").textContent = ""; $("#mAvs").innerHTML=""; $("#obsTag").style.display="none";
+    $("#msgs").innerHTML = view==="all"
+      ? `<div class="empty"><div class="emptybox"><div class="et">Observing all activity</div><div class="eh">Pick a conversation on the left to watch it. This view is read-only — to reply, message someone from <b>Direct messages</b>.</div></div></div>`
+      : `<div class="empty"><div class="emptybox"><div class="et">No conversation open</div><div class="eh">Pick a direct message on the left, or click <b>✎ New message</b>.</div></div></div>`;
+    showComposer(false);
+    return;
+  }
+
+  const t = threads.find(x=>x.id===openId);
+  const readOnly = view==="all" && !t.members.includes(me);
+  $("#mTitle").textContent = "# " + (t.subject || t.members.filter(m=>m!==me).join(", ") || "(no subject)");
+  $("#mSub").textContent = t.members.join(" ↔ ");
+  const ot = $("#obsTag"); ot.style.display = readOnly?"inline-block":"none"; ot.textContent="observing · read-only";
+  const avs = $("#mAvs"); avs.innerHTML="";
+  t.members.forEach(mm=>{
+    const human=isHuman(mm);
+    const x=document.createElement("div"); x.className="a"+(human?" person":""); x.style.background=colorFor(mm);
+    x.innerHTML=initials(mm)+(human?"":`<span class="pres ${isOnline(mm)?'':'off'}"></span>`);
+    avs.appendChild(x);
+  });
+  const msgs = $("#msgs"); msgs.innerHTML='<div class="daydiv"><span>Conversation</span></div>';
+  t.msgs.forEach(m=>{
+    if(m.to===me && !readOnly) seen.add(m);
+    const self = m.from===me;
+    const row=document.createElement("div"); row.className="msg";
+    row.innerHTML=`<div class="av" style="background:${colorFor(m.from)}">${initials(m.from)}</div>
+      <div><div class="l1"><span class="who">${esc(m.from)}</span>${self?'<span class="self">this identity</span>':''}
+      <span class="arrow">→ ${esc(m.to)}</span><span class="t">${m.t}</span></div>
+      <div class="txt">${esc(m.body)}</div>${receipt(m)}</div>`;
+    msgs.appendChild(row);
+  });
+  msgs.scrollTop = msgs.scrollHeight;
+
+  if(readOnly){
+    showComposer(false);
+    $("#msgs").insertAdjacentHTML("beforeend",
+      `<div class="roNote">👀 You’re observing this conversation between agents. To join in, message them from <b>Direct messages</b>.</div>`);
+  } else {
+    showComposer(true);
+    $("#cinput").placeholder = `Message ${other(t)}${acting?` as ${me}`:''}…`;
+  }
+}
+
+function renderCompose(){
+  $("#mTitle").textContent = "✎ New message";
+  $("#mSub").textContent = "from " + actor();
+  $("#mAvs").innerHTML=""; $("#obsTag").style.display="none";
+  const opts = Object.keys(agents).filter(a=>a!==actor())
+    .map(a=>`<option value="${a}">${esc(agents[a].name)} ${isHuman(a)?"— person":(isOnline(a)?"— online":"— offline")}</option>`).join("");
+  $("#msgs").innerHTML = `<div class="composeform">
+    <label>To</label><select id="cTo">${opts}</select>
+    <label>Subject <span class="opt">(optional)</span></label>
+    <input id="cSubj" placeholder="e.g. quick question" autocomplete="off">
+    <div class="hint">Type your message below and press <b>Enter</b> to send. Online agents get it instantly (<b>✓ Delivered</b>); offline ones are <b>◷ Queued</b>; a person sees it (<b>✉ Sent</b>) when they open Postbox.</div>
+  </div>`;
+  showComposer(true);
+  $("#cinput").placeholder = `Write your message${acting?` as ${actor()}`:''} — Enter to send…`;
+}
+
+function renderFleet(){
+  $("#mTitle").textContent = "🤖 Fleet";
+  $("#mSub").textContent = "headless agents — a turn is spawned when they get mail";
+  $("#mAvs").innerHTML=""; $("#obsTag").style.display="none";
+  showComposer(false);
+  const S = {running:["#17a673","running"],idle:["#3d9be0","ready"],queued:["#e8912d","queued"],disabled:["#b8bcc4","disabled"]};
+  const rows = fleet.map(a=>{
+    const [c,l]=S[a.state]||["#888",a.state];
+    const running=a.state==="running";
+    const meta=[a.lastExit!=null?`exit ${a.lastExit}`:"", a.lastRun?`ran ${a.lastRun}`:""].filter(Boolean).join(" · ");
+    return `<div class="frow${a.enabled?"":" off"}">
+      <span class="fdot" style="background:${a.enabled?c:'#b8bcc4'}"></span>
+      <div class="fmain"><div class="fname">${esc(a.address)}<span class="fstate">${a.enabled?l:"disabled"}</span></div>
+        <div class="fcmd">${esc(a.cmd)}</div>${meta?`<div class="fmeta">${esc(meta)}</div>`:""}</div>
+      <div class="fbtns">
+        <button data-act="fleet" data-op="run" data-val="${a.address}" ${running?"disabled":""} title="Force a turn now">Run now</button>
+        <button data-act="fleet" data-op="kill" data-val="${a.address}" ${running?"":"disabled"} title="Stop the current turn">Kill</button>
+        <button data-act="fleet" data-op="toggle" data-val="${a.address}" title="${a.enabled?'Stop auto-running on new mail':'Auto-run a turn when mail arrives'}">${a.enabled?"Disable":"Enable"}</button>
+        <button data-act="fleet" data-op="remove" data-val="${a.address}" class="danger" title="Remove from fleet">✕</button>
+      </div></div>`;
+  }).join("") || '<div class="empty"><div class="emptybox"><div class="et">No fleet agents yet</div><div class="eh">Add one below to let Postbox spawn headless turns on mail.</div></div></div>';
+  $("#msgs").innerHTML = `<div class="fleet">
+    <div class="faddbar">
+      <input id="fAddr" placeholder="agent name (e.g. reviewer)">
+      <input id="fCmd" placeholder="command — default: copilot -p {prompt}">
+      <input id="fCwd" placeholder="cwd (optional)">
+      <button data-act="fleetadd">Add agent</button>
+    </div>${rows}</div>`;
+}
+
+function showComposer(on){ $("#composer").style.display = on?"":"none"; if(!on){ $("#cinput").value=""; $("#send").classList.remove("on"); } }
+
+/* ---------- identity menu ---------- */
+function renderMenu(){
+  const m=$("#menu");
+  let h = `<div class="mh">You</div>
+    <div class="opt" data-act="stopact"><span class="av person" style="background:${colorFor(ME)}">${initials(ME)}</span><span class="nm">${esc(ME)}</span><span class="you">you</span>${!acting?'<span class="ck">✓</span>':''}</div>
+    <div class="opt" data-act="rename"><span class="av" style="background:#e8eef7;color:#1264a3">✎</span><span class="nm">Rename…</span></div>
+    <div class="sepm"></div>
+    <div class="mcap">Advanced · act as an agent</div>
+    <div class="msub">Send on an agent’s behalf (for agents you operate / debugging).</div>`;
+  Object.keys(agents).filter(a=>agents[a].kind==="agent").forEach(a=>{
+    h += `<div class="opt" data-act="actas" data-val="${a}"><span class="av" style="background:${colorFor(a)}">${initials(a)}<span class="pres ${isOnline(a)?'':'off'}"></span></span><span class="nm">${esc(a)}</span>${acting===a?'<span class="ck">✓</span>':''}</div>`;
+  });
+  m.innerHTML=h;
+}
+function toggleMenu(){ const m=$("#menu"); renderMenu(); m.classList.toggle("show"); $(".idswitch").classList.toggle("open"); }
+function closeMenu(){ $("#menu").classList.remove("show"); $(".idswitch").classList.remove("open"); }
+
+/* ---------- actions ---------- */
+function setView(v){ view=v; openId=null; composeMode=false; render(); }
+function openThread(id){ openId=id; composeMode=false; render(); }
+function openCompose(){ if(view==="fleet") view="dm"; composeMode=true; openId=null; render(); $("#cinput").focus(); }
+function setActor(a){ acting=a; view="dm"; openId=null; composeMode=false; closeMenu(); render(); }
+function stopActing(){ acting=null; view="dm"; openId=null; composeMode=false; closeMenu(); render(); }
+function renameYou(){ const n=prompt("Your name:", ME); if(n){ const old=ME; agents[n]={name:n,kind:"human"}; if(n!==old){ threads.forEach(t=>{t.members=t.members.map(m=>m===old?n:m); t.msgs.forEach(msg=>{if(msg.from===old)msg.from=n; if(msg.to===old)msg.to=n;});}); delete agents[old]; } ME=n; render(); } }
+
+function doSend(){
+  const inp=$("#cinput"); const body=inp.value.trim(); if(!body) return;
+  let t;
+  if(composeMode){
+    const to=$("#cTo").value, subj=($("#cSubj").value||"").trim();
+    t = threads.find(x=>x.members.includes(actor()) && x.members.includes(to) && (x.subject||"")===subj);
+    if(!t){ t={id:"t"+Date.now(), members:[actor(),to], subject:subj, msgs:[]}; threads.push(t); }
+    composeMode=false; openId=t.id;
+  } else { t=threads.find(x=>x.id===openId); if(!t) return; }
+  const to=other(t);
+  t.msgs.push({from:actor(), to, body, t:now(), readBy:[]});
+  inp.value=""; render();
+  simulateReply(t, to);
+}
+const REPLIES=["Got it — on it.","Sure, one moment.","Done ✅","Looking now.","Thanks, noted."];
+function simulateReply(t, to){
+  if(!isOnline(to)) return;                 // offline agent stays Queued; human stays Sent
+  setTimeout(()=>{ t.msgs.forEach(m=>{ if(m.from===actor() && !(m.readBy||[]).includes(to)) m.readBy.push(to); }); if(openId===t.id) render(); }, 800);
+  setTimeout(()=>{ t.msgs.push({from:to,to:actor(),body:REPLIES[Math.floor(Math.random()*REPLIES.length)],t:now(),readBy:[]}); if(openId===t.id) render(); }, 1500);
+}
+
+function fleetAct(op, addr){
+  const a=fleet.find(x=>x.address===addr);
+  if(op==="remove"){ if(confirm(`Remove ${addr} from the fleet?`)) fleet=fleet.filter(x=>x.address!==addr); }
+  else if(a){
+    if(op==="run") a.state="running";
+    else if(op==="kill") a.state="idle";
+    else if(op==="toggle"){ a.enabled=!a.enabled; a.state=a.enabled?"idle":"disabled"; }
+  }
+  render();
+}
+function fleetAdd(){
+  const addr=$("#fAddr").value.trim(); if(!addr) return alert("Enter an agent name.");
+  const cmd=$("#fCmd").value.trim()||"copilot -p {prompt}";
+  fleet.push({address:addr, state:"idle", cmd, enabled:true});
+  if(!agents[addr]) agents[addr]={name:addr,kind:"agent",online:false};
+  render();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e=>{
+  const t=e.target.closest("[data-act]");
+  if(!t){ if(!e.target.closest("#menu")) closeMenu(); return; }
+  e.stopPropagation();
+  const a=t.dataset.act;
+  if(a==="menu") return toggleMenu();
+  if(a==="rename"){ closeMenu(); return renameYou(); }
+  if(a==="view") return setView(t.dataset.val);
+  if(a==="open") return openThread(t.dataset.val);
+  if(a==="compose"){ closeMenu(); return openCompose(); }
+  if(a==="send") return doSend();
+  if(a==="actas") return setActor(t.dataset.val);
+  if(a==="stopact") return stopActing();
+  if(a==="fleet") return fleetAct(t.dataset.op, t.dataset.val);
+  if(a==="fleetadd") return fleetAdd();
+});
+$("#cinput").addEventListener("input", e=> $("#send").classList.toggle("on", !!e.target.value.trim()));
+$("#cinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doSend(); }});
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postbox — Slack-style DMs (prototype v2)</title>
+<link rel="stylesheet" href="../postbox/web/styles.css">
+<style>
+  .protobar{background:#111;color:#eee;font:600 12.5px var(--font);padding:6px 14px;display:flex;gap:10px;align-items:center}
+  .protobar b{color:#fff}.protobar .tag{background:#333;border-radius:20px;padding:2px 9px;color:#bdbdbd}
+  .app{height:calc(100vh - 31px)}
+  .wsname{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #ffffff1f;color:var(--side-title);font-weight:800;font-size:16px}
+  /* search */
+  .searchwrap{padding:10px 12px 4px;position:relative}
+  .searchwrap input{width:100%;background:#ffffff1a;border:1px solid #ffffff2b;border-radius:8px;color:#fff;font:14px var(--font);padding:8px 11px}
+  .searchwrap input::placeholder{color:#cbb8cb}
+  .searchwrap input:focus{outline:0;border-color:#ffffff66;background:#ffffff26}
+  .searchres{position:absolute;left:12px;right:12px;top:46px;background:#fff;color:#1d1c1d;border-radius:10px;box-shadow:0 8px 26px #00000040;padding:6px;z-index:60;max-height:280px;overflow:auto}
+  .sres{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:14px}
+  .sres:hover{background:#f3f0f3}
+  .sres .smeta{margin-left:auto;font-size:11px;color:#8d8d8d}
+  .sempty{padding:10px;color:#8d8d8d;font-size:13px}
+  /* DM rows — Slack style: avatar initials, no hash */
+  .dm{display:flex;align-items:center;gap:10px;padding:5px 14px;cursor:pointer;color:var(--side-ink)}
+  .dm:hover{background:var(--side-hover)}
+  .dm.active{background:var(--side-active);color:#fff}
+  .dm .dav{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:9.5px;position:relative;flex:0 0 auto}
+  .dm .dav .pres{position:absolute;right:-3px;bottom:-3px;width:9px;height:9px;border-radius:50%;border:2px solid var(--side);background:var(--green-2)}
+  .dm.active .dav .pres{border-color:var(--side-active)}
+  .dm .dav .pres.off{background:#9a8a9a}
+  .dm .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dm.unread .nm{font-weight:800;color:#fff}
+  .dm .b{margin-left:auto;background:var(--red);color:#fff;font-size:11px;font-weight:800;border-radius:10px;min-width:18px;text-align:center;padding:0 6px}
+  .navrow{display:flex;align-items:center;gap:9px;padding:8px 14px;cursor:pointer;color:var(--side-ink);font-size:14.5px;font-weight:700}
+  .navrow:hover{background:var(--side-hover)} .navrow.active{background:var(--side-active);color:#fff}
+  /* impersonation dropdown, top-right */
+  .vas{margin-left:auto;position:relative}
+  .vasbtn{display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:5px 10px;font:700 13px var(--font);color:#1d1c1d;cursor:pointer}
+  .vasbtn:hover{background:#f7f7f7}
+  .vasbtn.impersonating{background:#fff5d6;border-color:#ffe29a;color:#7a5300}
+  .vasbtn .car{font-size:10px;color:#888}
+  .vasmenu{position:absolute;right:0;top:38px;width:230px;background:#fff;border-radius:10px;box-shadow:0 8px 26px #00000033,0 0 0 1px #0000000f;padding:6px;z-index:60;display:none}
+  .vasmenu.show{display:block}
+  .vasmenu .mcap{font-size:10.5px;font-weight:800;color:#b06a00;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px 4px}
+  .foot a{color:#caffea}
+</style>
+</head>
+<body>
+<div class="protobar"><b>Prototype v2</b> <span class="tag">dummy data · no backend</span> click around — everything works as the real app will.</div>
+<div class="app">
+  <div class="side">
+    <div class="wsname">📬 Postbox</div>
+    <div class="searchwrap">
+      <input id="search" placeholder="Find or message anyone…" autocomplete="off">
+      <div class="searchres" id="searchRes" style="display:none"></div>
+    </div>
+    <div class="scroller">
+      <div class="grp"><span class="car">▾</span> Direct messages</div>
+      <div id="dmList"></div>
+      <div class="navrow" id="navFleet" data-act="showfleet" style="margin-top:8px">🤖&nbsp; Fleet</div>
+    </div>
+    <div class="foot" id="foot"></div>
+  </div>
+  <div class="main">
+    <div class="mhead">
+      <h1 id="mTitle"></h1><span class="sub" id="mSub"></span>
+      <div class="vas">
+        <button class="vasbtn" id="vasBtn" data-act="vas">Viewing as: <b id="vasName">You</b> <span class="car">▾</span></button>
+        <div class="vasmenu" id="vasMenu"></div>
+      </div>
+    </div>
+    <div class="msgs" id="msgs"></div>
+    <div class="composer" id="composer">
+      <div class="sendstatus" id="sendStatus"></div>
+      <div class="cbox"><div class="cinput">
+        <input id="cinput" placeholder="Message…" autocomplete="off">
+        <button class="send" id="send" data-act="send" title="Send">➤</button>
+      </div></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ---------- dummy data ---------- */
+const ME = "Ada";
+const agents = {
+  Ada:      {name:"Ada",      kind:"human"},
+  alice:    {name:"alice",    kind:"agent", online:true},
+  builder:  {name:"builder",  kind:"agent", online:false},
+  reviewer: {name:"reviewer", kind:"agent", online:true},
+  scout:    {name:"scout",    kind:"agent", online:true},
+  "test-1": {name:"test-1",   kind:"agent", online:true},
+};
+let threads = [
+  {id:"d1", members:["Ada","alice"], msgs:[
+    {from:"Ada", to:"alice", body:"At what time did you start?", t:"07:06", readBy:["alice"]},
+    {from:"alice", to:"Ada", body:"I started at 12:17 IST — what's your current working directory?", t:"07:06", readBy:[]},
+  ]},
+  {id:"d2", members:["Ada","test-1"], msgs:[
+    {from:"Ada", to:"test-1", body:"Which host are you on?", t:"07:10", readBy:[]},
+  ]},
+  {id:"d3", members:["alice","reviewer"], msgs:[
+    {from:"alice", to:"reviewer", body:"Could you review PR #42?", t:"05:30", readBy:["reviewer"]},
+    {from:"reviewer", to:"alice", body:"On it — looks good so far.", t:"05:34", readBy:["alice"]},
+  ]},
+  {id:"d4", members:["test-1","builder"], msgs:[
+    {from:"test-1", to:"builder", body:"Can you kick a build?", t:"06:40", readBy:["builder"]},
+    {from:"builder", to:"test-1", body:"Building now — will report back.", t:"06:41", readBy:[]},
+  ]},
+];
+let fleet = [
+  {address:"test-1",   state:"running", cmd:"copilot -p {prompt}", lastRun:"12:04:39", enabled:true},
+  {address:"reviewer", state:"idle",    cmd:"copilot -p {prompt}", lastRun:"11:58:10", enabled:true, lastExit:0},
+];
+
+/* ---------- state ---------- */
+let viewer = ME;      // whose inbox we're in (ME, or an agent we're impersonating)
+let openId = null;
+let panel  = "chat";  // chat | fleet
+let query  = "";
+const seen = new WeakSet();
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => (s||"").replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+const nameOf = a => agents[a]?.name || a;
+const isHuman = a => agents[a]?.kind === "human";
+const isOnline = a => agents[a]?.kind === "agent" && agents[a].online;
+const initials = n => n.replace(/[^a-z0-9]/gi,'').slice(0,2).toUpperCase();
+const palette = ["#2e8bba","#d9633b","#6b5bd2","#8a4fc4","#2f8f63","#b5495b","#3d7a8c"];
+const colorFor = a => palette[[...a].reduce((h,c)=>h+c.charCodeAt(0),0)%palette.length];
+const other = t => t.members.find(m=>m!==viewer) || t.members[0];
+const nowT = () => new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+const viewerThreads = () => threads.filter(t=>t.members.includes(viewer));
+const impersonating = () => viewer !== ME;
+const unread = t => t.msgs.filter(m=>m.to===viewer && m.from!==viewer && !seen.has(m)).length;
+
+function receipt(m){
+  if(m.from!==viewer) return "";
+  const r = m.to;
+  if((m.readBy||[]).includes(r)) return `<span class="rcpt read">✓✓ Read</span>`;
+  if(isHuman(r)) return `<span class="rcpt sent">✉ Sent · waiting for ${esc(nameOf(r))} to open</span>`;
+  if(isOnline(r)) return `<span class="rcpt"><span class="dot on"></span>✓ Delivered</span>`;
+  return `<span class="rcpt queued"><span class="dot off"></span>◷ Queued · delivers when ${esc(nameOf(r))} connects</span>`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  // top-right impersonation button
+  $("#vasName").textContent = impersonating() ? nameOf(viewer) : "You";
+  $("#vasBtn").classList.toggle("impersonating", impersonating());
+  $("#foot").innerHTML = impersonating()
+    ? `Impersonating <b>${esc(nameOf(viewer))}</b> · <a href="#" data-act="asme">back to you</a>`
+    : `You’re signed in as ${esc(ME)}`;
+  $("#navFleet").classList.toggle("active", panel==="fleet");
+
+  // DM list
+  const list = $("#dmList"); list.innerHTML = "";
+  viewerThreads().forEach(t=>{
+    const o = other(t), un = unread(t);
+    const row = document.createElement("div");
+    row.className = "dm" + (panel==="chat"&&openId===t.id?" active":"") + (un?" unread":"");
+    row.dataset.act="open"; row.dataset.val=t.id;
+    row.innerHTML = `<span class="dav" style="background:${colorFor(o)}">${initials(nameOf(o))}${isHuman(o)?"":`<span class="pres ${isOnline(o)?'':'off'}"></span>`}</span>
+      <span class="nm">${esc(nameOf(o))}</span>` + (un?`<span class="b">${un}</span>`:"");
+    list.appendChild(row);
+  });
+  if(!viewerThreads().length) list.innerHTML = `<div style="color:var(--side-ink-dim);font-size:13px;padding:4px 14px">No conversations yet — search above.</div>`;
+
+  renderMain();
+  renderSearch();
+}
+
+function renderMain(){
+  if(panel==="fleet") return renderFleet();
+  const t = openId && threads.find(x=>x.id===openId && x.members.includes(viewer));
+  if(!t){
+    $("#mTitle").textContent = "Messages"; $("#mSub").textContent="";
+    $("#msgs").innerHTML = `<div class="empty"><div class="emptybox"><div class="et">No conversation open</div><div class="eh">Search for someone above to start a direct message${impersonating()?` as ${esc(nameOf(viewer))}`:''}.</div></div></div>`;
+    showComposer(false); return;
+  }
+  const o = other(t);
+  $("#mTitle").textContent = nameOf(o);
+  $("#mSub").textContent = isHuman(o) ? "person" : (isOnline(o) ? "online" : "offline");
+  const msgs = $("#msgs"); msgs.innerHTML = "";
+  t.msgs.forEach(m=>{
+    if(m.to===viewer) seen.add(m);
+    const row=document.createElement("div"); row.className="msg";
+    row.innerHTML = `<div class="av" style="background:${colorFor(m.from)}">${initials(nameOf(m.from))}</div>
+      <div><div class="l1"><span class="who">${esc(nameOf(m.from))}</span><span class="t">${m.t}</span></div>
+      <div class="txt">${esc(m.body)}</div>${receipt(m)}</div>`;
+    msgs.appendChild(row);
+  });
+  msgs.scrollTop = msgs.scrollHeight;
+  showComposer(true);
+  $("#cinput").placeholder = `Message ${nameOf(o)}${impersonating()?` as ${nameOf(viewer)}`:''}…`;
+}
+
+function renderFleet(){
+  $("#mTitle").textContent = "🤖 Fleet"; $("#mSub").textContent = "headless agents — a turn is spawned when they get mail";
+  showComposer(false);
+  const S={running:["#17a673","running"],idle:["#3d9be0","ready"],disabled:["#b8bcc4","disabled"]};
+  const rows = fleet.map(a=>{
+    const [c,l]=S[a.state]||["#888",a.state]; const running=a.state==="running";
+    const meta=[a.lastExit!=null?`exit ${a.lastExit}`:"", a.lastRun?`ran ${a.lastRun}`:""].filter(Boolean).join(" · ");
+    return `<div class="frow${a.enabled?"":" off"}"><span class="fdot" style="background:${a.enabled?c:'#b8bcc4'}"></span>
+      <div class="fmain"><div class="fname">${esc(a.address)}<span class="fstate">${a.enabled?l:"disabled"}</span></div>
+      <div class="fcmd">${esc(a.cmd)}</div>${meta?`<div class="fmeta">${esc(meta)}</div>`:""}</div>
+      <div class="fbtns">
+        <button data-act="fleet" data-op="run" data-val="${a.address}" ${running?"disabled":""} title="Force a turn now">Run now</button>
+        <button data-act="fleet" data-op="kill" data-val="${a.address}" ${running?"":"disabled"} title="Stop the current turn">Kill</button>
+        <button data-act="fleet" data-op="toggle" data-val="${a.address}" title="${a.enabled?'Stop auto-running on new mail':'Auto-run on new mail'}">${a.enabled?"Disable":"Enable"}</button>
+        <button data-act="fleet" data-op="remove" data-val="${a.address}" class="danger">✕</button>
+      </div></div>`;
+  }).join("");
+  $("#msgs").innerHTML = `<div class="fleet"><div class="faddbar">
+    <input id="fAddr" placeholder="agent name (e.g. reviewer)"><input id="fCmd" placeholder="command — default: copilot -p {prompt}">
+    <input id="fCwd" placeholder="cwd (optional)"><button data-act="fleetadd">Add agent</button></div>${rows}</div>`;
+}
+
+function renderSearch(){
+  const res=$("#searchRes");
+  if(!query.trim()){ res.style.display="none"; res.innerHTML=""; return; }
+  const q=query.toLowerCase();
+  const hits=Object.keys(agents).filter(a=>a!==viewer && nameOf(a).toLowerCase().includes(q));
+  res.style.display="block";
+  res.innerHTML = hits.length
+    ? hits.map(a=>`<div class="sres" data-act="dm" data-val="${a}"><span class="dav" style="background:${colorFor(a)}">${initials(nameOf(a))}</span>${esc(nameOf(a))}<span class="smeta">${isHuman(a)?'person':(isOnline(a)?'online':'offline')}</span></div>`).join("")
+    : `<div class="sempty">No one matches “${esc(query)}”</div>`;
+}
+
+function showComposer(on){ $("#composer").style.display=on?"":"none"; if(!on){ $("#cinput").value=""; $("#send").classList.remove("on"); } }
+
+/* ---------- impersonation dropdown ---------- */
+function renderVas(){
+  const m=$("#vasMenu");
+  let h=`<div class="mh">Viewing as</div>
+    <div class="opt" data-act="asme"><span class="av person" style="background:${colorFor(ME)}">${initials(ME)}</span><span class="nm">${esc(ME)} (you)</span>${!impersonating()?'<span class="ck">✓</span>':''}</div>
+    <div class="sepm"></div><div class="mcap">Impersonate an agent</div>`;
+  Object.keys(agents).filter(a=>agents[a].kind==="agent").forEach(a=>{
+    h+=`<div class="opt" data-act="setviewer" data-val="${a}"><span class="av" style="background:${colorFor(a)}">${initials(nameOf(a))}<span class="pres ${isOnline(a)?'':'off'}"></span></span><span class="nm">${esc(nameOf(a))}</span>${viewer===a?'<span class="ck">✓</span>':''}</div>`;
+  });
+  m.innerHTML=h;
+}
+function toggleVas(){ renderVas(); $("#vasMenu").classList.toggle("show"); }
+function closeVas(){ $("#vasMenu").classList.remove("show"); }
+
+/* ---------- actions ---------- */
+function openThread(id){ panel="chat"; openId=id; render(); $("#cinput")?.focus(); }
+function setViewer(a){ viewer=a; openId=null; panel="chat"; closeVas(); render(); }
+function backToMe(){ setViewer(ME); }
+function openDm(addr){
+  query=""; $("#search").value="";
+  let t=threads.find(x=>x.members.length===2 && x.members.includes(viewer) && x.members.includes(addr));
+  if(!t){ t={id:"t"+Date.now(), members:[viewer,addr], msgs:[]}; threads.push(t); }
+  openThread(t.id);
+}
+function doSend(){
+  const inp=$("#cinput"), body=inp.value.trim(); if(!body) return;
+  const t=threads.find(x=>x.id===openId); if(!t) return;
+  const to=other(t);
+  t.msgs.push({from:viewer, to, body, t:nowT(), readBy:[]});
+  inp.value=""; render();
+  if(isOnline(to)){
+    setTimeout(()=>{ t.msgs.forEach(m=>{ if(m.from===viewer && !(m.readBy||[]).includes(to)) m.readBy.push(to); }); if(openId===t.id&&panel==="chat") render(); }, 800);
+    setTimeout(()=>{ const R=["Got it — on it.","Sure, one moment.","Done ✅","Looking now."]; t.msgs.push({from:to,to:viewer,body:R[Math.floor(Math.random()*R.length)],t:nowT(),readBy:[]}); if(openId===t.id&&panel==="chat") render(); }, 1500);
+  }
+}
+function fleetAct(op, addr){
+  const a=fleet.find(x=>x.address===addr);
+  if(op==="remove"){ if(confirm(`Remove ${addr} from the fleet?`)) fleet=fleet.filter(x=>x.address!==addr); }
+  else if(a){ if(op==="run")a.state="running"; else if(op==="kill")a.state="idle"; else if(op==="toggle"){a.enabled=!a.enabled;a.state=a.enabled?"idle":"disabled";} }
+  render();
+}
+function fleetAdd(){
+  const addr=$("#fAddr").value.trim(); if(!addr) return alert("Enter an agent name.");
+  fleet.push({address:addr, state:"idle", cmd:$("#fCmd").value.trim()||"copilot -p {prompt}", enabled:true});
+  if(!agents[addr]) agents[addr]={name:addr,kind:"agent",online:false};
+  render();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e=>{
+  const t=e.target.closest("[data-act]");
+  if(!t){
+    if(!e.target.closest("#vasMenu") && !e.target.closest("#vasBtn")) closeVas();
+    if(!e.target.closest(".searchwrap")){ query=""; $("#search").value=""; renderSearch(); }
+    return;
+  }
+  e.preventDefault(); e.stopPropagation();
+  const a=t.dataset.act;
+  if(a==="vas") return toggleVas();
+  if(a==="asme") return backToMe();
+  if(a==="setviewer") return setViewer(t.dataset.val);
+  if(a==="open") return openThread(t.dataset.val);
+  if(a==="dm") return openDm(t.dataset.val);
+  if(a==="send") return doSend();
+  if(a==="showfleet"){ panel="fleet"; openId=null; closeVas(); render(); return; }
+  if(a==="fleet") return fleetAct(t.dataset.op, t.dataset.val);
+  if(a==="fleetadd") return fleetAdd();
+});
+$("#search").addEventListener("input", e=>{ query=e.target.value; renderSearch(); });
+$("#cinput").addEventListener("input", e=> $("#send").classList.toggle("on", !!e.target.value.trim()));
+$("#cinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doSend(); }});
+
+render();
+</script>
+</body>
+</html>
