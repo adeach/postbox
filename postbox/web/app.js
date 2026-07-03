@@ -154,13 +154,12 @@ async function doSend(){
 // Slack-style quick switcher: find anyone and DM them (opens the existing thread, or a draft).
 function renderSearch(){
   const res = $("searchRes"), q = ($("search").value||"").trim().toLowerCase();
-  if(!q){ res.style.display="none"; res.innerHTML=""; return; }
   const hits = AGENTS.filter(a=> a.address!==viewer
-    && (a.name.toLowerCase().includes(q) || a.address.toLowerCase().includes(q)));
+    && (!q || a.name.toLowerCase().includes(q) || a.address.toLowerCase().includes(q)));
   res.style.display = "block";
   res.innerHTML = hits.length
     ? hits.map(a=>`<div class="sres" data-act="dm" data-val="${esc(a.address)}"><span class="dav" style="background:${colorFor(a.address)}">${initials(a.name)}</span>${esc(a.name)}<span class="smeta">${isHuman(a.address)?'person':(isOnline(a.address)?'online':'offline')}</span></div>`).join("")
-    : `<div class="sempty">No one matches “${esc(q)}”</div>`;
+    : `<div class="sempty">${q?`No one matches “${esc(q)}”`:"No one to message yet"}</div>`;
 }
 function closeSearch(){ $("search").value=""; $("searchRes").style.display="none"; $("searchRes").innerHTML=""; }
 
@@ -233,10 +232,12 @@ async function refreshFleet(force){
   let list;
   try{ list = await j("/fleet"); }
   catch(e){ host.innerHTML = `<div class="empty"><div class="emptybox"><div class="eh">Fleet API error: ${esc(String(e.message||e))}</div></div></div>`; return; }
-  const sig = JSON.stringify(list);
+  try{ await loadAgents(); }catch(e){}                    // refresh presence for the directory below
+  const sig = JSON.stringify([list, AGENTS.map(a=>[a.address, a.status])]);
   if(!force && sig === fleetSig) return;                  // unchanged → keep buttons live
   fleetSig = sig;
-  host.innerHTML = list.map(a=>{
+  const inFleet = new Set(list.map(a=>a.address));
+  const rows = list.map(a=>{
     const [col,lbl] = FLEET_STATE[a.state] || ["#888", a.state];
     const running = a.state==="running";
     const meta = [a.last_exit!=null?`exit ${a.last_exit}`:"", a.fail_count?`fails ${a.fail_count}`:"",
@@ -253,7 +254,16 @@ async function refreshFleet(force){
         <button data-act="fleet" data-op="${a.enabled?"disable":"enable"}" data-val="${esc(a.address)}" title="${a.enabled?'Stop auto-running on new mail':'Auto-run a turn when mail arrives'}">${a.enabled?"Disable":"Enable"}</button>
         <button data-act="fleet" data-op="remove" data-val="${esc(a.address)}" class="danger" title="Remove from fleet">✕</button>
       </div></div>`;
-  }).join("") || `<div class="empty"><div class="emptybox"><div class="et">No fleet agents yet</div><div class="eh">Add one above to let Postbox spawn headless turns on mail.</div></div></div>`;
+  }).join("") || `<div class="fnote">No fleet agents yet — add one above to have Postbox spawn headless turns on mail.</div>`;
+  // directory: EVERY registered identity + live presence (which are online/running, who's in the fleet)
+  const dir = AGENTS.map(a=>{
+    const human = isHuman(a.address), online = isOnline(a.address);
+    const dot = human ? "#8a4fc4" : (online ? "#17a673" : "#b8bcc4");
+    const meta = [human ? "person" : (online ? "online" : "offline"), inFleet.has(a.address) ? "in fleet" : ""].filter(Boolean).join(" · ");
+    return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span><span class="meta">${esc(meta)}</span></div>`;
+  }).join("") || `<div class="fnote">No agents registered yet.</div>`;
+  host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">— spawned on new mail</span></div>${rows}`
+    + `<div class="fgrp">All registered agents <span class="fgc">— everyone with an inbox</span></div><div class="fdir">${dir}</div>`;
 }
 
 async function addFleetAgent(){
@@ -300,6 +310,7 @@ function connectLive(){
 $("cinput").addEventListener("input", e=> $("send").classList.toggle("on", !!e.target.value.trim()));
 $("cinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doSend(); }});
 $("search").addEventListener("input", renderSearch);
+$("search").addEventListener("focus", renderSearch);   // show everyone the moment you click in
 document.addEventListener("click", e=>{
   const t = e.target.closest("[data-act]");
   if(!t){

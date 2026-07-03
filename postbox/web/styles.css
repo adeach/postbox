@@ -130,3 +130,12 @@
 .vasmenu .sepm{height:1px;background:#ececec;margin:5px 2px}
 .vasmenu .mcap{font-size:10.5px;font-weight:800;color:#b06a00;text-transform:uppercase;letter-spacing:.4px;padding:9px 10px 4px}
 .foot a{color:#caffea}
+/* fleet: section headers + registered-agents directory */
+.fgrp{font-weight:800;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:18px 4px 6px;padding-top:10px;border-top:1px solid var(--line2)}
+.fgrp:first-child{margin-top:2px;padding-top:0;border-top:0}
+.fgc{font-weight:600;text-transform:none;letter-spacing:0;color:#a0a0a0}
+.fnote{color:var(--muted);font-size:13px;padding:6px 4px}
+.fdirrow{display:flex;align-items:center;gap:9px;padding:5px 4px;font-size:14px;border-bottom:1px solid var(--line2)}
+.fdirrow .fdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.fdirrow .nm{font-weight:700}
+.fdirrow .meta{margin-left:auto;color:var(--muted);font-size:12px}
