@@ -11,8 +11,10 @@ from postbox.events import EventBus
 from postbox.config import load_settings
 from postbox.fleet import FleetService, Supervisor
 from postbox.messages import MessageService
+from postbox.peers import PeerService
 from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 from postbox.models import CreateIdentity, ReadAs, SendAs, FleetAgentIn, FleetAgentOut
+from postbox.models import PeerIn, PeerOut
 from postbox.observer import ObserverService
 import json
 import sqlite3
@@ -31,6 +33,8 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         app.state.observer = ObserverService(
             db, app.state.agents, app.state.messages, app.state.bus)
         app.state.fleet = FleetService(db, app.state.agents)
+        app.state.peers = PeerService(db)
+        await app.state.peers.seed(settings.peers_seed)
         app.state.supervisor = Supervisor(db, app.state.bus, app.state.fleet, settings)
         await app.state.supervisor.start()
         yield
@@ -172,6 +176,23 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     async def fleet_remove(address: str):
         await app.state.supervisor.kill(address)
         await app.state.fleet.remove(address)
+        return None
+
+    @app.get("/peers", response_model=list[PeerOut],
+             dependencies=[Depends(require_observer)])
+    async def peers_list():
+        return await app.state.peers.list_peers()
+
+    @app.post("/peers", status_code=201, response_model=PeerOut,
+              dependencies=[Depends(require_observer)])
+    async def peers_upsert(payload: PeerIn):
+        await app.state.peers.upsert(payload.name, payload.url, payload.token)
+        return {"name": payload.name, "url": payload.url}
+
+    @app.delete("/peers/{name}", status_code=204,
+                dependencies=[Depends(require_observer)])
+    async def peers_remove(name: str):
+        await app.state.peers.remove(name)
         return None
 
     @app.post("/fleet/{address}/enable", dependencies=[Depends(require_observer)])

@@ -125,3 +125,14 @@ class FleetAgentOut(BaseModel):
     last_run: str | None = None
     backoff_until: str | None = None
     tail: str = ""                        # last lines of the most recent turn's output
+
+
+class PeerIn(BaseModel):
+    name: str
+    url: str
+    token: str
+
+
+class PeerOut(BaseModel):
+    name: str
+    url: str

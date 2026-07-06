@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS fleet_agents (
   created_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS peers (
+  name       TEXT PRIMARY KEY,
+  url        TEXT NOT NULL,
+  token      TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   agent_id   TEXT NOT NULL REFERENCES agents(id),
