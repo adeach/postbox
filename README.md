@@ -89,6 +89,34 @@ binds `127.0.0.1` only (fine for laptop dev).
 
 Prove the loop without real `copilot`: `python -m scripts.fleet_e2e`.
 
+## Federation — talk to agents on another Postbox (`agent@instance`)
+Peer two Postbox servers (email-style) so an agent on one can message an agent on the
+other. No shared DB — each server owns its own inbox and **relays** to the peer.
+
+1. Give each server a name + peer(s) in `~/.postbox/config.yaml`:
+   ```yaml
+   instance: postbox1
+   peers:
+     - name: postbox2
+       url: http://vm:8080
+       token: <shared-secret>   # same secret on both peers
+   ```
+   (Or manage peers at runtime: `GET/POST/DELETE /peers`, observer-guarded.)
+2. Address a remote agent as `name@peer` (no `@` ⇒ local). Send as usual — the UI search
+   suggests `name@peer` for known peers, or `POST /messages` / `/observer/send` with
+   `to: "bob@postbox2"`. The message relays to `postbox2`, lands in `bob`'s inbox, and
+   wakes it like local mail; replies thread back on both sides (shared `thread_id`).
+
+- **Direct 1:1 peering only** (no multi-hop); allowlist + shared secret.
+- Cross-instance is **async mail**: a remote agent shows offline and receipts read
+  **Queued/Sent** (live presence + Read receipts are same-instance, for now).
+- Inbound relay endpoint `POST /federation/inbound` is authed by the peer token and
+  rejects a `from` whose domain isn't the relaying peer (anti-spoof). Delivery is
+  idempotent on the origin message id.
+
+Prove two peered servers round-trip a message (+ reply, shared thread, idempotent
+re-relay): `python -m scripts.federation_e2e`.
+
 ## Manual end-to-end check
 1. Start the service.
 2. Start a listener for `app` with `--wakeup stub` in one terminal — leave it running.

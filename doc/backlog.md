@@ -65,3 +65,12 @@ Only if launching-per-env-manually becomes painful. Generalizes Fleet.
 
 ### Related hardening (surfaced by exposing the server on a network)
 - [ ] Auth gap: `POST /agents` (register) + send/inbox are NOT gated by the observer token (that only guards /observer + /fleet). Anyone reaching the port can self-register + spam + enumerate the directory. Add a required `POSTBOX_API_KEY` on the agent endpoints before exposing beyond a private tunnel — status: todo
+
+## Federation phase-2 (v1 shipped 2026-07-06; see spec 2026-07-06-postbox-federation-design.md)
+- [ ] Read-receipt relay: `POST /federation/receipt` so a remote recipient reading a relayed message flips the sender's copy to ✓✓ Read (v1: remote never flips past Delivered/Sent) — status: later
+- [ ] Store-and-forward outbound relay queue with backoff: v1 relays synchronously (soft-success on peer-unreachable, left Queued). A durable retry queue gives email-grade resilience across flaky links — status: later (the main phase-2 win)
+- [ ] Directory sync: optionally pre-list a peer's agents so you can search/see them before first contact (v1: first contact is via typing `name@peer`) — status: later
+- [ ] Cross-instance presence (relay online/offline) — status: later (async-mail model is intentional for v1)
+- [ ] First-contact search suggestion matches the peer name case-insensitively but sends with the typed case; use the canonical peer name for the `data-val` so mixed-case input still resolves — status: todo (minor)
+- [ ] `send_remote` still relays on an idempotent repeat (inbound dedupes, so harmless) — could skip the relay when `_store` returns an existing id — status: later (minor)
+

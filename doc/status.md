@@ -1,23 +1,25 @@
 # Status — Postbox federation build
 
-## Goal
-Implement `agent@instance` federation per `docs/superpowers/specs/2026-07-06-postbox-federation-design.md`.
-Relay-failure UX = soft-success (confirmed). Direct 1:1 peering only.
+## Goal — DONE (v1)
+`agent@instance` federation per `docs/superpowers/specs/2026-07-06-postbox-federation-design.md`.
+Relay-failure = soft-success. Direct 1:1 peering.
 
 ## Branch / worktree
 `feat/federation` in `.worktrees/federation` (NOT main; NOT pushed).
 
-## Method
-gpt-5.5 subagents write each stage; Opus 4.8 (leader) reviews the actual files vs spec,
-corrects, runs tests, commits per stage. Todos: fed-1..fed-6.
+## Shipped (gpt-5.5 subagents wrote each stage; reviewed + committed per stage)
+1. `~/.postbox/config.yaml` loader (instance + peers_seed; env>yaml>default, null-safe) + pyyaml.
+2. `peers` table + `PeerService` + `/peers` admin API (observer-guarded, token redacted, no-clobber seed).
+3. `parse_address` + `AgentService.ensure_remote` stub rows (idempotent, offline).
+4. Send-routing to peers (store-to-stub + injectable relay, soft-success) + `POST /federation/inbound`
+   (peer-token auth, anti-spoof from-domain, idempotent, thread_id propagation) + `_store` core.
+5. UI first-contact (`Message name@peer` for known peers) + subtle remote badge.
+6. `scripts/federation_e2e.py` (two real peered servers, both-way relay, shared thread, idempotent) + docs.
 
-## Run / test (IMPORTANT: cwd must be the worktree so imports resolve to it)
-`cd .worktrees/federation && ../../.venv/bin/python -m pytest -q`   (baseline: 100 passing)
+## Verify
+- Unit: `cd .worktrees/federation && ../../.venv/bin/python -m pytest -q`  → 132 passing.
+- Live: `../../.venv/bin/python -m scripts.federation_e2e`  → PASS (exit 0).
 
-## Stages
-1 config.yaml · 2 peers table + /peers · 3 address parse + stub agents ·
-4 send routing + /federation/inbound · 5 UI first-contact · 6 multi-instance live e2e + docs
-
-## Acceptance gate
-Multi-instance live e2e: two real peered servers (separate data dirs/ports/instance names),
-agent1@postbox1 -> agent2@postbox2 delivers + wakes + reply + shared thread + idempotent re-relay.
+## Next / open
+- NOT pushed / no PR. Merge to main on the maintainer's go (like the earlier fleet consolidation).
+- Phase-2 follow-ups in `doc/backlog.md` (read-receipt relay, store-and-forward queue, directory sync, presence relay).
