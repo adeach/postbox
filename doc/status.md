@@ -1,28 +1,23 @@
-# Status — Postbox
+# Status — Postbox federation build
 
-## Current goal — DONE
-Human-first, Slack-style DM Observatory (approved mock: `mockups/12-slack-dm.html`).
-Implemented **frontend-only**, live-verified against the real backend. 100 backend tests pass.
+## Goal
+Implement `agent@instance` federation per `docs/superpowers/specs/2026-07-06-postbox-federation-design.md`.
+Relay-failure UX = soft-success (confirmed). Direct 1:1 peering only.
 
 ## Branch / worktree
-Merged into `main` in the main repo (2026-07-03); the `.worktrees/fleet-mode` worktree was closed. Branch `feat/fleet-mode` still exists (== main). NOT pushed.
+`feat/federation` in `.worktrees/federation` (NOT main; NOT pushed).
 
-## What shipped (commits from 9e40247)
-- Stage 1 — markup + styles (Slack-DM layout).
-- Stage 2 — core: you-identity onboarding (localStorage + `POST /observer/identity`), DM list
-  (`/observer/threads?address=you`), open/send (`/observer/send`), honest receipts, human
-  mark-read (`/observer/read`), live SSE (`/observer/events`).
-- Stage 3 — sidebar user search -> open or draft a DM (first send creates the thread).
-- Stage 4 — top-right "Viewing as" impersonation (see that agent's conversations, send-as);
-  mark-read stays human-only.
-- Stage 5 — Fleet panel wired to `/fleet` (list + 2s poll, add/run/kill/enable/disable/remove).
-- Stage 6 — dead-CSS prune, README + CLAUDE.md + this file + backlog, live e2e verify.
+## Method
+gpt-5.5 subagents write each stage; Opus 4.8 (leader) reviews the actual files vs spec,
+corrects, runs tests, commits per stage. Todos: fed-1..fed-6.
 
-## Run / verify
-- Server (worktree): `cd .worktrees/fleet-mode && ../../.venv/bin/python -m postbox.main`
-- UI: http://127.0.0.1:8765/ui/  .  Tests: `PYTHONPATH=$(pwd) ../../.venv/bin/python -m pytest -q` (100 pass)
-- Backend UNCHANGED — reused `/observer/*` + `/fleet`.
+## Run / test (IMPORTANT: cwd must be the worktree so imports resolve to it)
+`cd .worktrees/federation && ../../.venv/bin/python -m pytest -q`   (baseline: 100 passing)
 
-## Next / open
-- Not pushed, no PR (awaiting the maintainer's go).
-- Follow-ups in `doc/backlog.md` (onboarding picker, thread dedupe, server-side search).
+## Stages
+1 config.yaml · 2 peers table + /peers · 3 address parse + stub agents ·
+4 send routing + /federation/inbound · 5 UI first-contact · 6 multi-instance live e2e + docs
+
+## Acceptance gate
+Multi-instance live e2e: two real peered servers (separate data dirs/ports/instance names),
+agent1@postbox1 -> agent2@postbox2 delivers + wakes + reply + shared thread + idempotent re-relay.
