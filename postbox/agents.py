@@ -31,6 +31,25 @@ class AgentService:
         return RegisterResult(id=agent_id, name=name, address=address,
                               profile=payload.profile, token=token)
 
+    async def ensure_remote(self, address: str, peer: str) -> str:
+        existing = await self.db.fetchone(
+            "SELECT id FROM agents WHERE address=?", (address,))
+        if existing:
+            return existing[0]
+
+        agent_id = new_id()
+        now = now_iso()
+        await self.db.execute(
+            "INSERT INTO agents(id,name,address,profile,token_hash,created_at,"
+            "wakeup_kind,wakeup_target,status,last_seen) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (agent_id, address, address,
+             json.dumps({"remote": True, "peer": peer}),
+             hash_token(generate_token()), now,
+             "none", None, "offline", now),
+        )
+        return agent_id
+
     async def set_name(self, agent_id: str, name: str) -> AgentOut:
         taken = await self.db.fetchone(
             "SELECT id FROM agents WHERE address=? AND id<>?", (name, agent_id))
