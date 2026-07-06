@@ -18,6 +18,7 @@ const j = async (u, o={}) => {
 };
 
 let AGENTS = [];                                   // [{id,name,address,profile,status}]
+let PEERS = [];
 let YOU = localStorage.getItem("postbox.you") || null;   // your (human) identity address
 let viewer = null;                                 // identity we're viewing/sending as (Stage 4: impersonation)
 let THREADS = [];
@@ -28,10 +29,13 @@ let _lastMsgId = null, _openOther = null, draftTo = null;
 const agentByAddr = a => AGENTS.find(x=>x.address===a) || {address:a, name:a, status:"offline", profile:null};
 const nameOf   = a => agentByAddr(a).name;
 const isHuman  = a => !!agentByAddr(a).profile?.human;
+const isRemote = a => !!agentByAddr(a).profile?.remote;
 const isOnline = a => !isHuman(a) && agentByAddr(a).status === "online";
+const peerNames = () => new Set(PEERS.map(p=>p.name));
 const impersonating = () => viewer !== YOU;
 const otherOf = t => (t.members||[]).find(m=>m!==viewer) || (t.members||[])[0] || "";
 const unreadFor = t => (t.unread && t.unread[viewer]) || 0;
+const remoteTag = a => isRemote(a) ? `<span class="rtag">${esc(agentByAddr(a).profile?.peer || "remote")}</span>` : "";
 
 async function loadAgents(){ AGENTS = await j("/observer/agents"); }
 async function loadThreads(){ THREADS = await j("/observer/threads?address="+encodeURIComponent(viewer)); }
@@ -92,7 +96,7 @@ function renderSidebar(){
     row.className = "dm" + (panel==="chat" && openId===t.thread_id ? " active" : "") + (un?" unread":"");
     row.dataset.act = "open"; row.dataset.val = t.thread_id;
     row.innerHTML = `<span class="dav" style="background:${colorFor(o)}">${initials(nameOf(o))}${isHuman(o)?"":`<span class="pres ${isOnline(o)?'':'off'}"></span>`}</span>`
-      + `<span class="nm">${esc(nameOf(o))}</span>` + (un?`<span class="b">${un}</span>`:"");
+      + `<span class="nm">${esc(nameOf(o))}</span>${remoteTag(o)}` + (un?`<span class="b">${un}</span>`:"");
     list.appendChild(row);
   });
   if(!THREADS.length) list.innerHTML = `<div style="color:var(--side-ink-dim);font-size:13px;padding:4px 14px">No conversations yet — search above.</div>`;
@@ -109,7 +113,7 @@ async function showThread(id){
   const d = await j("/observer/threads/"+encodeURIComponent(id));
   const o = (d.members||[]).find(m=>m!==viewer) || (d.members||[])[0] || "";
   _openOther = o;
-  $("mTitle").textContent = nameOf(o);
+  $("mTitle").innerHTML = `${esc(nameOf(o))}${remoteTag(o)}`;
   $("mSub").textContent = isHuman(o) ? "person" : (isOnline(o) ? "online" : "offline");
   const msgs = $("msgs"); msgs.innerHTML = "";
   (d.messages||[]).forEach(m=>{
@@ -153,12 +157,17 @@ async function doSend(){
 
 // Slack-style quick switcher: find anyone and DM them (opens the existing thread, or a draft).
 function renderSearch(){
-  const res = $("searchRes"), q = ($("search").value||"").trim().toLowerCase();
+  const res = $("searchRes"), raw = ($("search").value||"").trim(), q = raw.toLowerCase();
   const hits = AGENTS.filter(a=> a.address!==viewer
     && (!q || a.name.toLowerCase().includes(q) || a.address.toLowerCase().includes(q)));
+  const m = q.match(/^([a-z0-9._-]+)@([a-z0-9._-]+)$/);
+  const canFirstContact = m && peerNames().has(m[2]) && !AGENTS.some(a=>a.address.toLowerCase()===q);
+  const firstContact = canFirstContact
+    ? [`<div class="sres" data-act="dm" data-val="${esc(raw)}"><span class="dav" style="background:${colorFor(raw)}">${initials(raw)}</span>Message ${esc(raw)}<span class="smeta">via ${esc(m[2])}</span></div>`]
+    : [];
   res.style.display = "block";
-  res.innerHTML = hits.length
-    ? hits.map(a=>`<div class="sres" data-act="dm" data-val="${esc(a.address)}"><span class="dav" style="background:${colorFor(a.address)}">${initials(a.name)}</span>${esc(a.name)}<span class="smeta">${isHuman(a.address)?'person':(isOnline(a.address)?'online':'offline')}</span></div>`).join("")
+  res.innerHTML = (firstContact.length || hits.length)
+    ? firstContact.concat(hits.map(a=>`<div class="sres" data-act="dm" data-val="${esc(a.address)}"><span class="dav" style="background:${colorFor(a.address)}">${initials(a.name)}</span>${esc(a.name)}${remoteTag(a.address)}<span class="smeta">${isHuman(a.address)?'person':(isOnline(a.address)?'online':'offline')}</span></div>`)).join("")
     : `<div class="sempty">${q?`No one matches “${esc(q)}”`:"No one to message yet"}</div>`;
 }
 function closeSearch(){ $("search").value=""; $("searchRes").style.display="none"; $("searchRes").innerHTML=""; }
@@ -169,7 +178,7 @@ async function openDm(addr){
   if(t) return showThread(t.thread_id);
   // no thread yet — show a draft; the first send creates the real thread
   panel="chat"; openId=null; draftTo=addr; _openOther=addr; _lastMsgId=null;
-  $("mTitle").textContent = nameOf(addr);
+  $("mTitle").innerHTML = `${esc(nameOf(addr))}${remoteTag(addr)}`;
   $("mSub").textContent = isHuman(addr) ? "person" : (isOnline(addr) ? "online" : "offline");
   $("msgs").innerHTML = `<div class="empty"><div class="emptybox"><div class="et">Message ${esc(nameOf(addr))}</div><div class="eh">This is the start of your direct message${impersonating()?` as ${esc(nameOf(viewer))}`:''}. Say hi 👋</div></div></div>`;
   showComposer(true);
@@ -340,6 +349,7 @@ document.addEventListener("click", e=>{
 
 (async function boot(){
   await loadAgents();
+  try{ PEERS = await j("/peers"); }catch(e){ PEERS = []; }
   await ensureYou();
   viewer = YOU;
   await loadThreads();

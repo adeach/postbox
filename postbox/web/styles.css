@@ -35,6 +35,7 @@
   .mhead{display:flex;align-items:center;gap:10px;padding:0 20px;height:56px;border-bottom:1px solid var(--line)}
   .mhead h1{font-size:17px;font-weight:900;letter-spacing:-.2px}
   .mhead .sub{color:var(--muted);font-size:13.5px;border-left:1px solid var(--line2);padding-left:12px;margin-left:4px}
+  .rtag{display:inline-block;margin-left:7px;border:1px solid #d7d7d7;border-radius:9px;padding:0 6px;color:#777;font-size:10.5px;font-weight:800;line-height:16px;vertical-align:middle}
   .msgs{flex:1;overflow:auto;padding:14px 0 8px}
   .msg{display:grid;grid-template-columns:48px 1fr;gap:8px;padding:6px 20px}
   .msg:hover{background:var(--hover)}
@@ -115,6 +116,7 @@
 .sres{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:14px}
 .sres:hover{background:#f3f0f3}
 .sres .smeta{margin-left:auto;font-size:11px;color:#8d8d8d}
+.sres .rtag{margin-left:2px;background:#f7f7f7}
 .sempty{padding:10px;color:#8d8d8d;font-size:13px}
 .dm{display:flex;align-items:center;gap:10px;padding:5px 14px;cursor:pointer;color:var(--side-ink)}
 .dm:hover{background:var(--side-hover)}
@@ -124,7 +126,10 @@
 .dm .dav .pres{position:absolute;right:-3px;bottom:-3px;width:9px;height:9px;border-radius:50%;border:2px solid var(--side);background:var(--green-2)}
 .dm.active .dav .pres{border-color:var(--side-active)}
 .dm .dav .pres.off{background:#9a8a9a}
-.dm .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dm .rtag{margin-left:auto;border-color:#ffffff33;color:var(--side-ink-dim);background:#ffffff12;line-height:15px;flex:0 0 auto}
+.dm.active .rtag,.dm.unread .rtag{color:#fff;border-color:#ffffff59;background:#ffffff1f}
+.dm .rtag + .b{margin-left:0}
 .dm.unread .nm{font-weight:800;color:#fff}
 .dm .b{margin-left:auto;background:var(--red);color:#fff;font-size:11px;font-weight:800;border-radius:10px;min-width:18px;text-align:center;padding:0 6px}
 .navrow{display:flex;align-items:center;gap:9px;padding:8px 14px;margin-top:8px;cursor:pointer;color:var(--side-ink);font-size:14.5px;font-weight:700}
