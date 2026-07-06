@@ -30,6 +30,8 @@ gives live presence/receipts for free. **Do not federate to solve mere connectiv
 - **Directory sync** (seeing a peer's agents before first contact).
 - Store-and-forward **retry queue** (v1 relays synchronously; phase 2 adds durability).
 - Open/public federation, spam/abuse controls (SPF/DKIM-equivalents). Out of scope by design.
+- **Transitive/multi-hop relay** (postbox1→postbox2→postbox3). **Direct 1:1 peering only** (decision #3) —
+  a received message is delivered locally, **never re-forwarded**; enforced by the `from`-domain == relaying-peer check.
 
 ## Grounding in the current code (why the design is shaped this way)
 - `messages.sender_id` **and** `recipients.agent_id` are both **`FK → agents(id)`**
@@ -49,7 +51,7 @@ gives live presence/receipts for free. **Do not federate to solve mere connectiv
   address; `profile` (JSON) carries `{"remote": true, "peer": "..."}`.
 
 ## Addressing model
-- Each server has an **instance name**: `POSTBOX_INSTANCE` (e.g. `postbox1`).
+- Each server has an **instance name** from config (`instance:` in `config.yaml`, env-overridable), e.g. `postbox1`.
 - Recipient parse: `split("@", 1)`.
   - no `@` → local address (today's behavior).
   - `name@X` where `X == POSTBOX_INSTANCE` → local (strip the suffix).
@@ -58,14 +60,39 @@ gives live presence/receipts for free. **Do not federate to solve mere connectiv
 - A remote agent's canonical local address (its stub) **is** `name@peer` — globally
   unambiguous, satisfies `UNIQUE`, and renders as-is in the UI.
 
-## Peer registry (config, known ahead of time)
-Env-driven (or a tiny `peers` table later). Off by default.
+## Configuration — `~/.postbox/config.yaml`
+All configurable params move into a single YAML file at `<data_dir>/config.yaml`
+(default `~/.postbox/config.yaml`); env vars still **override** it (containers/tests/CI).
+`config.py:load_settings()` gains YAML loading (adds a `pyyaml` dep — or TOML via stdlib
+`tomllib` if we want zero new deps; YAML chosen per decision #1). Shape:
+```yaml
+instance: postbox1            # this server's federation domain name
+host: 127.0.0.1
+port: 8080
+observer_token: "<secret>"    # optional
+fleet:                        # existing knobs
+  max_concurrent: 5
+  agent_cooldown: 5
+peers:                        # seeds the peers table on first boot (then managed via /peers)
+  - name: postbox2
+    url: http://vm:8080
+    token: "<shared-secret>"
 ```
-POSTBOX_INSTANCE = postbox1
-POSTBOX_PEERS    = {"postbox2": {"url": "http://vm:8080", "token": "<shared-secret>"}}
+Precedence: env var > `config.yaml` > built-in default. A server with `instance` unset
+and no peers behaves exactly as today (federation off).
+
+## Peers — persistent table + `/peers` admin API (decision #2)
+Peers live in a **`peers` table** (persistent), seeded from `config.yaml` on first boot
+and thereafter managed at runtime:
 ```
-`token` authenticates BOTH directions (outbound header + inbound guard). Peering is
-symmetric: postbox2 lists postbox1 with the same shared secret.
+peers(name TEXT PRIMARY KEY, url TEXT NOT NULL, token TEXT NOT NULL, created_at TEXT NOT NULL)
+```
+- `GET /peers` → list configured peers (token redacted).
+- `POST /peers {name, url, token}` → add/replace a peer.
+- `DELETE /peers/{name}` → remove a peer.
+All guarded by `require_observer` (same gate as `/fleet`). `token` authenticates BOTH
+directions (outbound relay header + inbound guard); peering is symmetric (postbox2 adds
+postbox1 with the same shared secret). The address parser resolves peers from this table.
 
 ## Stub remote agents
 Helper `agents.ensure_remote(address="name@peer", peer="peer") -> agent_id`:
@@ -139,8 +166,10 @@ unchanged. `T` is a uuid → no cross-server collision.
 
 ## API & config summary
 - New: `POST /federation/inbound` (peer-token guarded) — accepts a relayed message.
+- New: `GET /peers`, `POST /peers`, `DELETE /peers/{name}` (observer-guarded) — manage peers.
 - Phase 2: `POST /federation/receipt` — relays a read receipt.
-- Config: `POSTBOX_INSTANCE` (this server's domain name), `POSTBOX_PEERS` (JSON map).
+- Config: `~/.postbox/config.yaml` (`instance`, `peers`, host/port, observer token, fleet
+  knobs); env vars override. Peers persist in the `peers` table (seeded from config).
 - No changes to agent-facing tools/routes — `to="name@peer"` flows through `send`.
 
 ## UI changes (small)
@@ -190,11 +219,17 @@ unchanged. `T` is a uuid → no cross-server collision.
 - **Phase 2:** read-receipt relay, store-and-forward queue (resilience), directory sync,
   optional cross-instance presence.
 
-## Open questions
-1. Instance-name source of truth — env `POSTBOX_INSTANCE`, or derive from a configured
-   public URL? (Prefer explicit env.)
-2. Peers via env JSON (v1) vs a `peers` table with a `/peers` admin API (later)?
-3. v1 relay failure UX — soft-success + "Queued (peer unreachable)" vs hard error to the
-   sender? (Lean soft-success to match async-mail semantics.)
-4. Do we ever need >2 peers / transitive relay (postbox1→postbox2→postbox3)? v1 assumes
-   direct peering only (no forwarding), which is simpler and safer.
+## Resolved decisions (2026-07-06)
+1. **Config file:** all params live in `~/.postbox/config.yaml` — including the `instance`
+   name and the `peers` seed; env vars override (containers/tests). Adds a `pyyaml` dep
+   (or stdlib `tomllib`/TOML if we'd rather stay zero-dep — YAML chosen for readability).
+2. **Peers:** a persistent `peers` table + `GET/POST/DELETE /peers` admin API
+   (observer-guarded), seeded from `config.yaml` on first boot.
+3. **Topology:** **direct 1:1 peering only** — like email point-to-point; no transitive/
+   multi-hop forwarding. A relay hop delivers locally and stops.
+
+## Remaining open
+- **Relay-failure UX** (peer unreachable at send time): recommended **soft-success** —
+  store the sender's copy, mark it "Queued (peer unreachable)", and let a phase-2
+  store-and-forward queue retry. Matches async-mail semantics and avoids surprising the
+  agent with a hard error for a transient link blip. (Confirm, or prefer a hard error?)
