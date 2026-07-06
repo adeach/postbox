@@ -136,3 +136,16 @@ class PeerIn(BaseModel):
 class PeerOut(BaseModel):
     name: str
     url: str
+
+
+class FederationInbound(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    body: str
+    subject: str | None = None
+    content_type: str = "text/plain"
+    fed_thread_id: str
+    origin_msg_id: str
+    created_at: str | None = None
+
+    model_config = {"populate_by_name": True}

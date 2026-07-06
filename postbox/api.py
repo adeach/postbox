@@ -9,12 +9,13 @@ from postbox.agents import AgentService
 from postbox.db import Database
 from postbox.events import EventBus
 from postbox.config import load_settings
+from postbox.federation import FederationService
 from postbox.fleet import FleetService, Supervisor
 from postbox.messages import MessageService
 from postbox.peers import PeerService
 from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 from postbox.models import CreateIdentity, ReadAs, SendAs, FleetAgentIn, FleetAgentOut
-from postbox.models import PeerIn, PeerOut
+from postbox.models import FederationInbound, PeerIn, PeerOut
 from postbox.observer import ObserverService
 import json
 import sqlite3
@@ -35,6 +36,10 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         app.state.fleet = FleetService(db, app.state.agents)
         app.state.peers = PeerService(db)
         await app.state.peers.seed(settings.peers_seed)
+        app.state.federation = FederationService(
+            db, app.state.agents, app.state.messages, app.state.peers,
+            app.state.bus, settings)
+        app.state.messages.federation = app.state.federation
         app.state.supervisor = Supervisor(db, app.state.bus, app.state.fleet, settings)
         await app.state.supervisor.start()
         yield
@@ -194,6 +199,22 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     async def peers_remove(name: str):
         await app.state.peers.remove(name)
         return None
+
+    @app.post("/federation/inbound", status_code=201)
+    async def federation_inbound(
+        payload: FederationInbound,
+        x_postbox_peer_token: str = Header(default="", alias="X-Postbox-Peer-Token"),
+    ):
+        try:
+            return await app.state.federation.inbound(
+                x_postbox_peer_token, payload.model_dump(by_alias=True))
+        except PermissionError as e:
+            detail = str(e)
+            if detail == "unknown peer token":
+                raise HTTPException(401, detail)
+            raise HTTPException(403, detail)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
 
     @app.post("/fleet/{address}/enable", dependencies=[Depends(require_observer)])
     async def fleet_enable(address: str):

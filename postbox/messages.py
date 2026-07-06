@@ -10,6 +10,7 @@ class MessageService:
         self.db = db
         self.agents = agents
         self.bus = bus
+        self.federation = None
 
     async def _row_to_out(self, row, read_at=None) -> MessageOut:
         sender_addr = (await self.db.fetchone(
@@ -20,7 +21,49 @@ class MessageService:
             read_at=read_at,
         )
 
+    async def _store(self, *, sender_id: str, recipient_id: str, body: str,
+                     subject: str | None, content_type: str, thread_id: str,
+                     in_reply_to: str | None, idempotency_key: str | None,
+                     emit_received: bool = True, msg_id: str | None = None) -> str:
+        # idempotency: return existing message for a repeated key
+        if idempotency_key:
+            existing = await self.db.fetchone(
+                "SELECT id FROM messages WHERE sender_id=? AND idempotency_key=?",
+                (sender_id, idempotency_key),
+            )
+            if existing:
+                return existing[0]
+
+        msg_id = msg_id or new_id()
+        created = now_iso()
+        async with self.db.write_lock:
+            await self.db.conn.execute(
+                "INSERT INTO messages(id,thread_id,in_reply_to,sender_id,subject,"
+                "body,content_type,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (msg_id, thread_id, in_reply_to, sender_id, subject,
+                 body, content_type, idempotency_key, created),
+            )
+            await self.db.conn.execute(
+                "INSERT INTO recipients(message_id,agent_id,kind,delivered_at) "
+                "VALUES (?,?,?,?)",
+                (msg_id, recipient_id, "to", created),
+            )
+            await self.db.conn.commit()
+
+        if emit_received:
+            sender_addr = (await self.db.fetchone(
+                "SELECT address FROM agents WHERE id=?", (sender_id,)))[0]
+            ev = await self.bus.append(recipient_id, "message.received", {
+                "message_id": msg_id, "thread_id": thread_id,
+                "from": sender_addr, "subject": subject,
+            })
+            await self.bus.publish(ev)
+        return msg_id
+
     async def send(self, sender_id: str, payload: SendMessage) -> MessageOut:
+        if self.federation is not None and self.federation.is_remote(payload.to):
+            return await self.federation.send_remote(sender_id, payload)
+
         # idempotency: return existing message for a repeated key
         if payload.idempotency_key:
             existing = await self.db.fetchone(
@@ -48,34 +91,12 @@ class MessageService:
             if subject is None:
                 subject = parent[1]
 
-        created = now_iso()
-        async with self.db.write_lock:
-            await self.db.conn.execute(
-                "INSERT INTO messages(id,thread_id,in_reply_to,sender_id,subject,"
-                "body,content_type,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (msg_id, thread_id, payload.in_reply_to, sender_id, subject,
-                 payload.body, payload.content_type, payload.idempotency_key, created),
-            )
-            await self.db.conn.execute(
-                "INSERT INTO recipients(message_id,agent_id,kind,delivered_at) "
-                "VALUES (?,?,?,?)",
-                (msg_id, recipient.id, "to", created),
-            )
-            await self.db.conn.commit()
-
-        sender_addr = (await self.db.fetchone(
-            "SELECT address FROM agents WHERE id=?", (sender_id,)))[0]
-        ev = await self.bus.append(recipient.id, "message.received", {
-            "message_id": msg_id, "thread_id": thread_id,
-            "from": sender_addr, "subject": subject,
-        })
-        await self.bus.publish(ev)
-
-        return MessageOut(
-            id=msg_id, thread_id=thread_id, in_reply_to=payload.in_reply_to,
-            sender=sender_addr, subject=subject, body=payload.body,
-            content_type=payload.content_type, created_at=created, read_at=None,
-        )
+        stored_id = await self._store(
+            sender_id=sender_id, recipient_id=recipient.id, body=payload.body,
+            subject=subject, content_type=payload.content_type, thread_id=thread_id,
+            in_reply_to=payload.in_reply_to, idempotency_key=payload.idempotency_key,
+            emit_received=True, msg_id=msg_id)
+        return await self.get(sender_id, stored_id)
 
     async def _load(self, agent_id: str, message_id: str, mark_read: bool) -> MessageOut:
         """Participant view. A participant is the sender OR a recipient.
