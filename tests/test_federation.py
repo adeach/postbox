@@ -173,3 +173,40 @@ async def test_inbound_unknown_local_recipient(services):
             "fed_thread_id": "thread-1",
             "origin_msg_id": "origin-1",
         })
+
+
+async def test_spawn_remote_relays_and_returns_address(db):
+    agents = AgentService(db); bus = EventBus(db)
+    messages = MessageService(db, agents, bus); peers = PeerService(db)
+    await peers.upsert("vm", "http://vm.example:8765", "shared-tok")
+    calls = []
+    async def spawn_relay(url, token, payload):
+        calls.append((url, token, payload))
+        n = payload["name"]
+        return {"name": n, "session": f"postbox_{n}",
+                "attach": f"tmux attach -t postbox_{n}", "registered": True}
+    fed = FederationService(db, agents, messages, peers, bus,
+                            SimpleNamespace(instance="laptop"), spawn_relay=spawn_relay)
+    res = await fed.spawn_remote("helper", None, "vm")
+    assert calls == [("http://vm.example:8765", "shared-tok",
+                      {"name": "helper", "cwd": None})]
+    assert res["address"] == "helper@vm"      # how the caller then messages it
+    assert res["instance"] == "vm" and res["registered"] is True
+
+
+async def test_spawn_remote_unknown_peer_raises(db):
+    agents = AgentService(db); bus = EventBus(db)
+    messages = MessageService(db, agents, bus); peers = PeerService(db)
+    fed = FederationService(db, agents, messages, peers, bus,
+                            SimpleNamespace(instance="laptop"))
+    with pytest.raises(ValueError):
+        await fed.spawn_remote("helper", None, "ghost")
+
+
+async def test_peer_by_token_lookup(db):
+    peers = PeerService(db)
+    await peers.upsert("vm", "http://vm", "tok123")
+    fed = FederationService(db, AgentService(db), None, peers, None,
+                            SimpleNamespace(instance="laptop"))
+    assert (await fed.peer_by_token("tok123"))["name"] == "vm"
+    assert await fed.peer_by_token("nope") is None

@@ -19,11 +19,11 @@ class TerminalService:
     the tmux plumbing can be exercised without a real `copilot`.
     """
 
-    def __init__(self, settings, agents, runner=None, program=("copilot", "--allow-tool=postbox")):
+    def __init__(self, settings, agents, runner=None, program=None):
         self.s = settings
         self.agents = agents
         self._run = runner or self._run_tmux
-        self.program = list(program)
+        self.program = list(program) if program else ["copilot", "--allow-tool=postbox"]
         self.spawn_wait = 25.0        # seconds to wait for a spawned agent to register
 
     async def _run_tmux(self, argv: list[str]) -> tuple[int, str]:

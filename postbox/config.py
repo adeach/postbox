@@ -55,6 +55,8 @@ class Settings:
     backoff_cap: int = 300
     instance: str | None = None
     peers_seed: tuple[dict, ...] = ()
+    terminal_cmd: str | None = None    # override the copilot launch command for spawned terminals
+    spawn_wait: int = 25               # seconds to wait for a spawned agent to register
 
     @property
     def public_url(self) -> str:
@@ -82,4 +84,6 @@ def load_settings(data_dir: str | None = None) -> Settings:
         backoff_cap=_int_cfg("POSTBOX_BACKOFF_CAP", fleet, "backoff_cap", 300),
         instance=_optional_value("POSTBOX_INSTANCE", config, "instance"),
         peers_seed=tuple(peer for peer in peers if isinstance(peer, dict)),
+        terminal_cmd=_optional_value("POSTBOX_TERMINAL_CMD", config, "terminal_cmd"),
+        spawn_wait=_int_cfg("POSTBOX_SPAWN_WAIT", config, "spawn_wait", 25),
     )

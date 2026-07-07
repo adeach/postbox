@@ -60,9 +60,10 @@ class MailTools:
         r.raise_for_status()
         return r.json()
 
-    async def spawn_terminal(self, name: str, cwd: str | None = None) -> dict:
+    async def spawn_terminal(self, name: str, cwd: str | None = None,
+                             instance: str | None = None) -> dict:
         r = await self.client.post("/spawn", headers=self.headers,
-                                   json={"name": name, "cwd": cwd})
+                                   json={"name": name, "cwd": cwd, "instance": instance})
         r.raise_for_status()
         return r.json()
 
@@ -204,12 +205,12 @@ def build_server():
         return await session.tools.reply(message_id, body)
 
     @mcp.tool()
-    async def spawn_terminal(name: str, cwd: str = "") -> dict:
+    async def spawn_terminal(name: str, cwd: str = "", instance: str = "") -> dict:
         """Spin up a NEW interactive copilot agent (in its own tmux session) that you can
-        then talk to. Returns {name, session, attach, registered}: `attach` is the
-        `tmux attach` command a human can use to watch it, and `registered` is true once
-        the new agent is ready — then message it by `name` with send_message."""
-        return await session.tools.spawn_terminal(name, cwd or None)
+        then talk to. Leave `instance` empty to spawn locally; set it to a peer name (e.g.
+        "vm") to spawn on that peer — then message the agent at name@instance. Returns
+        {name, session, attach, registered, address?}: message it once `registered` is true."""
+        return await session.tools.spawn_terminal(name, cwd or None, instance or None)
 
     # A durable/fleet identity (token provided) must NOT rename itself — its address
     # is a fixed, referenced key. Only expose set_name for self-registering sessions.

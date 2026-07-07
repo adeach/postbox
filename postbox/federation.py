@@ -19,7 +19,8 @@ def parse_address(to: str) -> tuple[str, str | None]:
 
 
 class FederationService:
-    def __init__(self, db, agents, messages, peers, bus, settings, relay=None):
+    def __init__(self, db, agents, messages, peers, bus, settings, relay=None,
+                 spawn_relay=None):
         self.db = db
         self.agents = agents
         self.messages = messages
@@ -27,6 +28,7 @@ class FederationService:
         self.bus = bus
         self.settings = settings
         self.relay = relay or self._relay
+        self.spawn_relay = spawn_relay or self._relay_spawn
         self.log = logging.getLogger(__name__)
 
     async def _relay(self, url: str, token: str, payload: dict) -> None:
@@ -37,6 +39,37 @@ class FederationService:
                 json=payload,
             )
             resp.raise_for_status()
+
+    async def _relay_spawn(self, url: str, token: str, payload: dict) -> dict:
+        # a remote spawn boots a copilot AND waits for it to register on the peer, so
+        # allow well over the peer's registration timeout before giving up.
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{url}/federation/spawn",
+                headers={"X-Postbox-Peer-Token": token},
+                json=payload,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    async def peer_by_token(self, token: str) -> dict | None:
+        for candidate in await self.peers.list_peers():
+            if candidate["token"] == token:
+                return candidate
+        return None
+
+    async def spawn_remote(self, name: str, cwd: str | None, peer_name: str) -> dict:
+        """Ask a peer to spin up an interactive copilot on ITS host; the spawned agent
+        registers on the peer and is addressed as name@peer (existing federation carries
+        the chat). Spawn is not soft-success — surface peer errors to the caller."""
+        peer = await self.peers.get(peer_name)
+        if peer is None:
+            raise ValueError(f"unknown peer: {peer_name}")
+        result = await self.spawn_relay(peer["url"], peer["token"],
+                                        {"name": name, "cwd": cwd})
+        result["address"] = f"{name}@{peer_name}"
+        result["instance"] = peer_name
+        return result
 
     def is_remote(self, to) -> tuple[str, str] | None:
         name, domain = parse_address(to)
@@ -93,11 +126,7 @@ class FederationService:
         return out
 
     async def inbound(self, peer_token: str, body: dict) -> dict:
-        peer = None
-        for candidate in await self.peers.list_peers():
-            if candidate["token"] == peer_token:
-                peer = candidate
-                break
+        peer = await self.peer_by_token(peer_token)
         if peer is None:
             raise PermissionError("unknown peer token")
 

@@ -149,3 +149,55 @@ async def test_spawn_endpoint_is_bearer_authed(tmp_path):
             # collision with the caller's own name → 409
             assert (await c.post("/spawn", headers=h,
                                  json={"name": "caller"})).status_code == 409
+
+
+async def test_federation_spawn_endpoint_peer_token_gated(tmp_path):
+    """POST /federation/spawn: a peer asks us to spawn locally — peer-token gated."""
+    from httpx import ASGITransport, AsyncClient
+    from postbox.api import create_app
+    app = create_app(str(tmp_path / "data"))
+    async with app.router.lifespan_context(app):
+        app.state.terminals = TerminalService(
+            SimpleNamespace(port=8765), app.state.agents, runner=FakeRunner())
+        app.state.terminals.spawn_wait = 0.2
+        await app.state.peers.upsert("laptop", "http://laptop", "peer-tok")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            # unknown token → 401
+            r = await c.post("/federation/spawn",
+                             headers={"X-Postbox-Peer-Token": "nope"},
+                             json={"name": "helper"})
+            assert r.status_code == 401
+            # valid peer token → spawns
+            r = await c.post("/federation/spawn",
+                             headers={"X-Postbox-Peer-Token": "peer-tok"},
+                             json={"name": "helper"})
+            assert r.status_code == 201
+            assert r.json()["session"] == "postbox_helper"
+
+
+async def test_spawn_endpoint_routes_remote_instance_to_federation(tmp_path):
+    """POST /spawn with a remote `instance` delegates to federation.spawn_remote."""
+    from httpx import ASGITransport, AsyncClient
+    from postbox.api import create_app
+    app = create_app(str(tmp_path / "data"))
+    async with app.router.lifespan_context(app):
+        await app.state.peers.upsert("vm", "http://vm", "tok")
+        calls = []
+        async def fake_spawn_relay(url, token, payload):
+            calls.append((url, token, payload))
+            return {"name": payload["name"], "session": "postbox_x",
+                    "attach": "tmux attach -t postbox_x", "registered": True}
+        app.state.federation.spawn_relay = fake_spawn_relay
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            caller = (await c.post("/agents", json={"name": "caller"})).json()
+            h = {"Authorization": f"Bearer {caller['token']}"}
+            r = await c.post("/spawn", headers=h,
+                             json={"name": "helper", "instance": "vm"})
+            assert r.status_code == 201
+            d = r.json()
+            assert d["address"] == "helper@vm" and d["instance"] == "vm"
+            assert calls and calls[0][0] == "http://vm"
+            # unknown instance → 404
+            r2 = await c.post("/spawn", headers=h,
+                              json={"name": "helper2", "instance": "ghost"})
+            assert r2.status_code == 404

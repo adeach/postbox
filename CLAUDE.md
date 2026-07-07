@@ -40,6 +40,7 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `scripts/observer_e2e.py` — live Observatory proof (real uvicorn): seeds agents + a message, asserts observer endpoints reflect it, send-as delivers, and `/ui/` serves.
 - `scripts/presence_delivery_e2e.py` — live HTTP/SSE proof of the honest model (8 checks): live presence, Queued vs Delivered vs Sent, human read path + agent-guard, presence drop on SSE close, no ghost-online after restart.
 - `scripts/fleet_e2e.py` — live Fleet-mode proof (real uvicorn + a real spawned subprocess): the Supervisor spawns a headless turn that authenticates AS its identity via injected `POSTBOX_TOKEN`, drains its inbox and replies; asserts identity-injection + per-identity coalescing (one turn drains N messages) + clean exit.
+- `scripts/remote_spawn_e2e.py` — live proof of CROSS-INSTANCE terminal spawn (laptop asks a peer to spin up a terminal agent; peer uses `POSTBOX_TERMINAL_CMD=sleep` so no real copilot needed).
 - `scripts/federation_e2e.py` — live two-instance federation proof: boots TWO real peered servers (separate data dirs/ports/`instance` names), asserts forward relay + reply both ways, shared `thread_id`, and idempotent re-relay.
 - `scripts/demo_live.py` — seeded live demo server on :8765 (alice online via held SSE, bob offline, adam human + messages in every receipt state) for clicking the real `/ui/`.
 - `tests/conftest.py` — `db` fixture (temp-db Database).

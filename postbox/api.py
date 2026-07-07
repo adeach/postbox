@@ -36,7 +36,9 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         app.state.observer = ObserverService(
             db, app.state.agents, app.state.messages, app.state.bus)
         app.state.fleet = FleetService(db, app.state.agents)
-        app.state.terminals = TerminalService(settings, app.state.agents)
+        _prog = settings.terminal_cmd.split() if settings.terminal_cmd else None
+        app.state.terminals = TerminalService(settings, app.state.agents, program=_prog)
+        app.state.terminals.spawn_wait = settings.spawn_wait
         app.state.peers = PeerService(db)
         await app.state.peers.seed(settings.peers_seed)
         app.state.federation = FederationService(
@@ -207,6 +209,32 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         # Agent-facing spawn: any registered agent can spin up an interactive copilot and
         # then message it. Waits until the new agent registers so the caller can send
         # to it right away. (The UI uses the observer-guarded /terminals; this is Bearer.)
+        # A remote `instance` relays the spawn to that peer (name@instance addressing).
+        if payload.instance and payload.instance != settings.instance:
+            try:
+                return await app.state.federation.spawn_remote(
+                    payload.name, payload.cwd, payload.instance)
+            except ValueError as e:
+                raise HTTPException(404, str(e))
+            except Exception as e:
+                raise HTTPException(502, f"remote spawn failed: {e}")
+        try:
+            res = await app.state.terminals.spawn(payload.name, payload.cwd)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+        res["registered"] = await app.state.terminals.wait_registered(payload.name)
+        return res
+
+    @app.post("/federation/spawn", status_code=201)
+    async def federation_spawn(
+        payload: TerminalIn,
+        x_postbox_peer_token: str = Header(default="", alias="X-Postbox-Peer-Token"),
+    ):
+        # A peer asks us to spin up a copilot on THIS host (peer-token gated, like inbound).
+        if await app.state.federation.peer_by_token(x_postbox_peer_token) is None:
+            raise HTTPException(401, "unknown peer token")
         try:
             res = await app.state.terminals.spawn(payload.name, payload.cwd)
         except ValueError as e:

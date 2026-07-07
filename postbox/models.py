@@ -156,3 +156,4 @@ class FederationInbound(BaseModel):
 class TerminalIn(BaseModel):
     name: str
     cwd: str | None = None
+    instance: str | None = None      # spawn on a peer (name@instance) instead of locally
