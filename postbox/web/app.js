@@ -286,7 +286,9 @@ async function refreshFleet(force){
     const sid = a.session_key
       ? `<button class="sidchip" data-act="copysid" data-val="${esc(a.session_key)}" title="Copy session id — resume this agent with:  copilot --resume ${esc(a.session_key)}">↻ ${esc(a.session_key.slice(0,8))}</button>`
       : "";
-    return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span>${sid}<span class="meta">${esc(meta)}</span><button class="fx" data-act="forget" data-val="${esc(a.id)}" title="Forget — hide from this list (keeps its messages + session)">✕</button></div>`;
+    const dm = a.address !== viewer;                 // can't DM the identity you're viewing as
+    const chat = dm ? `<button class="fchat" data-act="dm" data-val="${esc(a.address)}" title="Message ${esc(a.name)}">💬 Chat</button>` : "";
+    return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span>${sid}<span class="meta">${esc(meta)}</span>${chat}<button class="fx" data-act="forget" data-val="${esc(a.id)}" title="Forget — hide from this list (keeps its messages + session)">✕</button></div>`;
   }).join("") || `<div class="fnote">No agents registered yet.</div>`;
   // interactive terminal agents (tmux sessions you attach to)
   const termRows = terms.map(t=>
@@ -294,6 +296,7 @@ async function refreshFleet(force){
     + `<span class="nm">${esc(t.name)}</span>`
     + `<button class="sidchip" data-act="copytext" data-val="${esc(t.attach)}" title="Copy — run this in a terminal to attach">${esc(t.attach)}</button>`
     + `<span class="meta">tmux</span>`
+    + `<button class="fchat" data-act="dm" data-val="${esc(t.name)}" title="Message ${esc(t.name)}">💬 Chat</button>`
     + `<button class="fx" data-act="termkill" data-val="${esc(t.name)}" title="Kill this terminal session (its identity/messages stay)">✕</button></div>`
   ).join("") || `<div class="fnote">No terminal agents running — spin one up above, then attach with the tmux command it gives you.</div>`;
   host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
