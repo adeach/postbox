@@ -30,12 +30,12 @@ async def test_spawn_builds_injection_safe_tmux_argv(db):
     r = FakeRunner()
     svc = _svc(db, r)
     res = await svc.spawn("alice")
-    assert res == {"name": "alice", "session": "postbox-alice",
-                   "attach": "tmux attach -t postbox-alice"}
+    assert res == {"name": "alice", "session": "postbox_alice",
+                   "attach": "tmux attach -t postbox_alice"}
     # argv is an exec list (no shell): tmux → detached named session → env-set vars →
     # copilot with postbox tools pre-approved (so the spawned agent never prompts)
     assert r.calls[0] == [
-        "tmux", "new-session", "-d", "-s", "postbox-alice",
+        "tmux", "new-session", "-d", "-s", "postbox_alice",
         "env", "POSTBOX_NAME=alice", "POSTBOX_URL=http://127.0.0.1:8765",
         "copilot", "--allow-tool=postbox"]
 
@@ -85,20 +85,20 @@ async def test_spawn_rejects_existing_online_agent_but_allows_forgotten(db):
         await svc.spawn("alice")                    # name in use → reject
     await agents.deregister(a.id)                   # 'forget' it
     res = await svc.spawn("alice")                  # now the name is reusable
-    assert res["session"] == "postbox-alice"
+    assert res["session"] == "postbox_alice"
 
 
 async def test_spawn_surfaces_tmux_failure(db):
-    r = FakeRunner(rc=1, out="duplicate session: postbox-alice")
+    r = FakeRunner(rc=1, out="duplicate session: postbox_alice")
     with pytest.raises(RuntimeError):
         await _svc(db, r).spawn("alice")
 
 
 async def test_list_filters_postbox_sessions(db):
-    r = FakeRunner(out="postbox-bob\npostbox-alice\nother-session\nmy-work\n")
+    r = FakeRunner(out="postbox_bob\npostbox_alice\nother-session\nmy-work\n")
     got = await _svc(db, r).list_terminals()
-    assert [t["name"] for t in got] == ["alice", "bob"]     # only postbox-*, sorted
-    assert got[0]["attach"] == "tmux attach -t postbox-alice"
+    assert [t["name"] for t in got] == ["alice", "bob"]     # only postbox_*, sorted
+    assert got[0]["attach"] == "tmux attach -t postbox_alice"
 
 
 async def test_list_empty_when_no_tmux_server(db):
@@ -110,6 +110,6 @@ async def test_kill_builds_argv_and_validates(db):
     r = FakeRunner()
     svc = _svc(db, r)
     await svc.kill("alice")
-    assert r.calls[0] == ["tmux", "kill-session", "-t", "postbox-alice"]
+    assert r.calls[0] == ["tmux", "kill-session", "-t", "postbox_alice"]
     with pytest.raises(ValueError):
         await svc.kill("bad name")

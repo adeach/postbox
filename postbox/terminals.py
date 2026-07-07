@@ -5,7 +5,7 @@ import re
 # tmux session names can't contain '.' or ':'; keep it tight and also safe to reuse
 # verbatim as the POSTBOX_NAME. Validated at the trust boundary (this spawns processes).
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
-PREFIX = "postbox-"
+PREFIX = "postbox_"
 
 
 class TerminalService:
