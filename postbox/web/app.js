@@ -220,7 +220,7 @@ const FLEET_STATE = { running:["#17a673","running"], queued:["#e8912d","queued"]
 function openFleet(){
   panel = "fleet"; openId = null; draftTo = null; closeVas(); closeSearch();
   $("mTitle").textContent = "🤖 Fleet";
-  $("mSub").textContent = "headless agents — a turn is spawned when they get mail";
+  $("mSub").textContent = "headless workers (spawned on mail) + interactive terminal agents (you attach)";
   showComposer(false);
   renderSidebar();
   // static shell; refresh is MANUAL (the ↻ button) so the list never flickers under you
@@ -231,6 +231,12 @@ function openFleet(){
       <input id="fCwd" placeholder="cwd (optional)" autocomplete="off">
       <button data-act="fleetadd" class="fbtn primary">Add agent</button>
       <button data-act="fleetrefresh" class="fbtn" title="Refresh fleet status + presence">↻ Refresh</button>
+    </div>
+    <div class="faddbar term">
+      <input id="tName" placeholder="terminal agent name (e.g. alice)" autocomplete="off">
+      <input id="tCwd" placeholder="cwd (optional)" autocomplete="off">
+      <button data-act="termspawn" class="fbtn primary">Spin up terminal</button>
+      <span class="fhint">interactive copilot in tmux — attach from your terminal</span>
     </div>
     <div id="fleetList"></div></div>`;
   refreshFleet(true);
@@ -243,7 +249,9 @@ async function refreshFleet(force){
   try{ list = await j("/fleet"); }
   catch(e){ host.innerHTML = `<div class="empty"><div class="emptybox"><div class="eh">Fleet API error: ${esc(String(e.message||e))}</div></div></div>`; return; }
   try{ await loadAgents(); }catch(e){}                    // refresh presence for the directory below
-  const sig = JSON.stringify([list, AGENTS.map(a=>[a.address, a.status])]);
+  let terms = [];
+  try{ terms = await j("/terminals"); }catch(e){ terms = []; }
+  const sig = JSON.stringify([list, terms, AGENTS.map(a=>[a.address, a.status])]);
   if(!force && sig === fleetSig) return;                  // unchanged → keep buttons live
   fleetSig = sig;
   const inFleet = new Set(list.map(a=>a.address));
@@ -280,7 +288,16 @@ async function refreshFleet(force){
       : "";
     return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span>${sid}<span class="meta">${esc(meta)}</span><button class="fx" data-act="forget" data-val="${esc(a.id)}" title="Forget — hide from this list (keeps its messages + session)">✕</button></div>`;
   }).join("") || `<div class="fnote">No agents registered yet.</div>`;
+  // interactive terminal agents (tmux sessions you attach to)
+  const termRows = terms.map(t=>
+    `<div class="fdirrow"><span class="fdot" style="background:#3d9be0"></span>`
+    + `<span class="nm">${esc(t.name)}</span>`
+    + `<button class="sidchip" data-act="copytext" data-val="${esc(t.attach)}" title="Copy — run this in a terminal to attach">${esc(t.attach)}</button>`
+    + `<span class="meta">tmux</span>`
+    + `<button class="fx" data-act="termkill" data-val="${esc(t.name)}" title="Kill this terminal session (its identity/messages stay)">✕</button></div>`
+  ).join("") || `<div class="fnote">No terminal agents running — spin one up above, then attach with the tmux command it gives you.</div>`;
   host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
+    + `<div class="fgrp">Terminal agents <span class="fgc">${terms.length} interactive</span></div><div class="fdir">${termRows}</div>`
     + `<div class="fgrp">All registered agents <span class="fgc">${AGENTS.length} with an inbox</span></div><div class="fdir">${dir}</div>`;
 }
 
@@ -323,10 +340,34 @@ async function forgetAgent(id){
   }catch(e){ alert("Could not forget — "+String(e.message||e).slice(0,160)); }
 }
 
-async function copySid(sid, btn){
-  try{ await navigator.clipboard.writeText(sid); }
-  catch(e){ prompt("Copy this session id (resume with  copilot --resume <id>):", sid); return; }
+async function copyText(text, btn){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){ prompt("Copy this:", text); return; }
   if(btn){ const o = btn.textContent; btn.textContent = "✓ copied"; setTimeout(()=>{ btn.textContent = o; }, 1200); }
+}
+
+async function spawnTerminal(){
+  const name = $("tName").value.trim();
+  if(!name){ alert("Enter a name for the terminal agent."); return; }
+  const cwd = $("tCwd").value.trim() || null;
+  fleetPausedUntil = Date.now() + 1500;
+  try{
+    const res = await j("/terminals", {method:"POST", headers:{'content-type':'application/json'},
+      body: JSON.stringify({name, cwd})});
+    $("tName").value=""; $("tCwd").value="";
+    await refreshFleet(true);
+    try{ await navigator.clipboard.writeText(res.attach); }catch(e){}
+    alert(`Spawned terminal agent “${res.name}”.\n\nAttach from a terminal with:\n\n    ${res.attach}\n\n(copied to your clipboard)`);
+  }catch(e){ alert("Could not spin up terminal — "+String(e.message||e).slice(0,200)); }
+}
+
+async function killTerminal(name){
+  if(!confirm(`Kill terminal session for “${name}”?\n\nThis stops the tmux session. The agent's identity and messages are kept.`)) return;
+  fleetPausedUntil = Date.now() + 1500;
+  try{
+    await j("/terminals/"+encodeURIComponent(name), {method:"DELETE"});
+    await refreshFleet(true);
+  }catch(e){ alert("Could not kill terminal — "+String(e.message||e).slice(0,160)); }
 }
 
 function connectLive(){
@@ -366,7 +407,10 @@ document.addEventListener("click", e=>{
   if(a==="fleet") return fleetAction(t.dataset.op, t.dataset.val);
   if(a==="fleetadd") return addFleetAgent();
   if(a==="forget") return forgetAgent(t.dataset.val);
-  if(a==="copysid") return copySid(t.dataset.val, t);
+  if(a==="copysid") return copyText(t.dataset.val, t);
+  if(a==="copytext") return copyText(t.dataset.val, t);
+  if(a==="termspawn") return spawnTerminal();
+  if(a==="termkill") return killTerminal(t.dataset.val);
 });
 
 (async function boot(){

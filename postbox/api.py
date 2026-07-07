@@ -16,7 +16,9 @@ from postbox.peers import PeerService
 from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 from postbox.models import CreateIdentity, ReadAs, SendAs, FleetAgentIn, FleetAgentOut
 from postbox.models import FederationInbound, PeerIn, PeerOut
+from postbox.models import TerminalIn
 from postbox.observer import ObserverService
+from postbox.terminals import TerminalService
 import json
 import sqlite3
 
@@ -34,6 +36,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         app.state.observer = ObserverService(
             db, app.state.agents, app.state.messages, app.state.bus)
         app.state.fleet = FleetService(db, app.state.agents)
+        app.state.terminals = TerminalService(settings, app.state.agents)
         app.state.peers = PeerService(db)
         await app.state.peers.seed(settings.peers_seed)
         app.state.federation = FederationService(
@@ -173,6 +176,30 @@ def create_app(data_dir: str | None = None) -> FastAPI:
             await app.state.supervisor.kill(agent.address)
             await app.state.fleet.remove(agent.address)
         await app.state.agents.deregister(agent_id)
+        return None
+
+    @app.post("/terminals", status_code=201, dependencies=[Depends(require_observer)])
+    async def terminals_spawn(payload: TerminalIn):
+        try:
+            return await app.state.terminals.spawn(payload.name, payload.cwd)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+
+    @app.get("/terminals", dependencies=[Depends(require_observer)])
+    async def terminals_list():
+        return await app.state.terminals.list_terminals()
+
+    @app.delete("/terminals/{name}", status_code=204,
+                dependencies=[Depends(require_observer)])
+    async def terminals_kill(name: str):
+        try:
+            await app.state.terminals.kill(name)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
         return None
 
     @app.get("/fleet", response_model=list[FleetAgentOut],

@@ -151,3 +151,8 @@ class FederationInbound(BaseModel):
     created_at: str | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class TerminalIn(BaseModel):
+    name: str
+    cwd: str | None = None

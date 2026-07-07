@@ -75,6 +75,8 @@
 .faddbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--line)}
 .faddbar input{flex:1;min-width:130px;height:38px;border:1px solid #d9d9d9;border-radius:8px;padding:0 12px;font:14px var(--font);color:var(--ink)}
 .faddbar input:focus{outline:0;border-color:#9a9a9a;box-shadow:0 0 0 3px #1264a318}
+.faddbar.term{border-bottom:0;padding-top:12px;padding-bottom:12px}
+.faddbar .fhint{color:#9b9b9b;font-size:12.5px;flex-basis:100%;margin-top:-4px}
 .fbtn{height:38px;border-radius:8px;padding:0 16px;font:600 13.5px var(--font);cursor:pointer;border:1px solid #d9d9d9;background:#fff;color:var(--ink);white-space:nowrap}
 .fbtn:hover{background:#f5f5f5}
 .fbtn.primary{background:var(--green);border-color:var(--green);color:#fff}
