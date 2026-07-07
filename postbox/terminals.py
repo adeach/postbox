@@ -18,7 +18,7 @@ class TerminalService:
     the tmux plumbing can be exercised without a real `copilot`.
     """
 
-    def __init__(self, settings, agents, runner=None, program=("copilot",)):
+    def __init__(self, settings, agents, runner=None, program=("copilot", "--allow-tool=postbox")):
         self.s = settings
         self.agents = agents
         self._run = runner or self._run_tmux

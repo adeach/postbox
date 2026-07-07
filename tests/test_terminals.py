@@ -19,9 +19,11 @@ class FakeRunner:
         return self.rc, self.out
 
 
-def _svc(db, runner, program=("copilot",)):
-    return TerminalService(SimpleNamespace(port=8765), AgentService(db),
-                           runner=runner, program=program)
+def _svc(db, runner, program=None):
+    kw = {"runner": runner}
+    if program is not None:
+        kw["program"] = program          # else use TerminalService's real default
+    return TerminalService(SimpleNamespace(port=8765), AgentService(db), **kw)
 
 
 async def test_spawn_builds_injection_safe_tmux_argv(db):
@@ -30,10 +32,18 @@ async def test_spawn_builds_injection_safe_tmux_argv(db):
     res = await svc.spawn("alice")
     assert res == {"name": "alice", "session": "postbox-alice",
                    "attach": "tmux attach -t postbox-alice"}
-    # argv is an exec list (no shell): tmux → detached named session → env-set vars → copilot
+    # argv is an exec list (no shell): tmux → detached named session → env-set vars →
+    # copilot with postbox tools pre-approved (so the spawned agent never prompts)
     assert r.calls[0] == [
         "tmux", "new-session", "-d", "-s", "postbox-alice",
-        "env", "POSTBOX_NAME=alice", "POSTBOX_URL=http://127.0.0.1:8765", "copilot"]
+        "env", "POSTBOX_NAME=alice", "POSTBOX_URL=http://127.0.0.1:8765",
+        "copilot", "--allow-tool=postbox"]
+
+
+async def test_spawn_default_preapproves_postbox_tools(db):
+    r = FakeRunner()
+    await _svc(db, r).spawn("alice")
+    assert "--allow-tool=postbox" in r.calls[0]     # no permission prompt for postbox MCP
 
 
 async def test_spawn_with_cwd_adds_c_flag(db, tmp_path):
