@@ -8,7 +8,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{font:15px/1.46 var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;overflow:hidden}
-  .app{display:grid;grid-template-columns:260px 1fr;height:100vh}
+  .app{display:grid;grid-template-columns:260px 1fr;grid-template-rows:minmax(0,1fr);height:100vh}
 
   /* ---------- sidebar ---------- */
   .side{background:var(--side);color:var(--side-ink);display:flex;flex-direction:column;overflow:visible;position:relative}
@@ -31,7 +31,7 @@
   .side .foot{padding:10px 16px;border-top:1px solid #ffffff1f;color:#c2afc2;font-size:12px}
 
   /* ---------- main ---------- */
-  .main{display:flex;flex-direction:column;min-width:0}
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
   .mhead{display:flex;align-items:center;gap:10px;padding:0 20px;height:56px;border-bottom:1px solid var(--line)}
   .mhead h1{font-size:17px;font-weight:900;letter-spacing:-.2px}
   .mhead .sub{color:var(--muted);font-size:13.5px;border-left:1px solid var(--line2);padding-left:12px;margin-left:4px}
