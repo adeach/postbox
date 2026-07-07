@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
+import hmac
 from postbox.agents import AgentService
+from postbox.auth import make_session_cookie, valid_session_cookie
 from postbox.db import Database
 from postbox.events import EventBus
 from postbox.config import load_settings
@@ -16,7 +18,7 @@ from postbox.peers import PeerService
 from postbox.models import AgentOut, RegisterAgent, RegisterResult, SendMessage, SetName
 from postbox.models import CreateIdentity, ReadAs, SendAs, FleetAgentIn, FleetAgentOut
 from postbox.models import FederationInbound, PeerIn, PeerOut
-from postbox.models import TerminalIn
+from postbox.models import TerminalIn, LoginIn
 from postbox.observer import ObserverService
 from postbox.terminals import TerminalService
 import json
@@ -65,15 +67,37 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         return agent
 
     async def require_observer(request: Request) -> None:
-        """Guards /observer + /fleet when POSTBOX_OBSERVER_TOKEN is set. Accepts the
-        token in an X-Observer-Token header, or a ?token= query param for EventSource
-        (which cannot set headers). Unset → open (localhost/SSH-forward is the gate)."""
-        want = settings.observer_token
-        if not want:
+        """Guards /observer + /fleet + /peers. Accepts a UI login session cookie
+        (auth.password) OR the X-Observer-Token header/?token= (for curl/scripts/SSE).
+        Neither configured → open (localhost/SSH-forward is the gate)."""
+        pw = settings.password
+        tok = settings.observer_token
+        if not pw and not tok:
             return
-        got = request.headers.get("x-observer-token") or request.query_params.get("token")
-        if got != want:
-            raise HTTPException(401, "invalid or missing observer token")
+        if pw and valid_session_cookie(pw, request.cookies.get("postbox_session")):
+            return
+        if tok:
+            got = request.headers.get("x-observer-token") or request.query_params.get("token")
+            if got == tok:
+                return
+        raise HTTPException(401, "authentication required")
+
+    @app.post("/login")
+    async def login(payload: LoginIn, response: Response):
+        pw = settings.password
+        if not pw:
+            raise HTTPException(400, "password auth is not enabled")
+        if not hmac.compare_digest(payload.password, pw):
+            raise HTTPException(401, "wrong password")
+        response.set_cookie(
+            "postbox_session", make_session_cookie(pw),
+            httponly=True, samesite="lax", max_age=30 * 86400, path="/")
+        return {"ok": True}
+
+    @app.post("/logout")
+    async def logout(response: Response):
+        response.delete_cookie("postbox_session", path="/")
+        return {"ok": True}
 
     @app.post("/agents", status_code=201, response_model=RegisterResult)
     async def register(payload: RegisterAgent):

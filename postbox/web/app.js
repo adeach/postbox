@@ -13,9 +13,24 @@ const j = async (u, o={}) => {
   const headers = {...(o.headers||{})};
   if(OBS_TOKEN) headers["X-Observer-Token"] = OBS_TOKEN;
   const r = await fetch(API+u, {...o, headers});
+  if(r.status===401){ showLogin(); throw new Error("auth required"); }
   if(!r.ok) throw new Error(await r.text());
   return r.status===204 ? null : r.json();
 };
+
+function showLogin(){
+  const o = $("loginOverlay");
+  if(o){ o.style.display = "flex"; const p = $("loginPw"); if(p) p.focus(); }
+}
+async function doLogin(){
+  const pw = $("loginPw").value;
+  try{
+    const r = await fetch("/login", {method:"POST", headers:{'content-type':'application/json'},
+      body: JSON.stringify({password: pw})});
+    if(!r.ok){ $("loginErr").textContent = r.status===401 ? "Wrong password" : "Login unavailable"; return; }
+    location.reload();
+  }catch(e){ $("loginErr").textContent = "Login failed"; }
+}
 
 let AGENTS = [];                                   // [{id,name,address,profile,status}]
 let PEERS = [];
@@ -416,6 +431,7 @@ function connectLive(){
 
 $("cinput").addEventListener("input", e=> $("send").classList.toggle("on", !!e.target.value.trim()));
 $("cinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doSend(); }});
+$("loginPw").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doLogin(); }});
 $("search").addEventListener("input", renderSearch);
 $("search").addEventListener("focus", renderSearch);   // show everyone the moment you click in
 document.addEventListener("click", e=>{
@@ -444,6 +460,7 @@ document.addEventListener("click", e=>{
   if(a==="termkill") return killTerminal(t.dataset.val);
   if(a==="showall") return openAllConv();
   if(a==="openall") return showThread(t.dataset.val, true);
+  if(a==="login") return doLogin();
 });
 
 (async function boot(){

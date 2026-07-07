@@ -178,3 +178,18 @@
 .fdirrow .fchat{margin-left:12px;border:1px solid #cfe0d8;background:#eefaf4;color:#127a52;
   font:600 12.5px var(--font);cursor:pointer;padding:4px 12px;border-radius:7px;flex:0 0 auto}
 .fdirrow .fchat:hover{background:#127a52;color:#fff;border-color:#127a52}
+
+/* login gate overlay */
+.loginov{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+  background:#3f0e40}
+.loginbox{display:flex;flex-direction:column;gap:12px;width:300px;padding:32px;
+  background:#fff;border-radius:14px;box-shadow:0 20px 60px #0006}
+.loginbox .loginh{font-size:22px;font-weight:800;color:#1d1c1d;text-align:center}
+.loginbox .loginsub{font-size:13.5px;color:#6a6f7a;text-align:center;margin-bottom:4px}
+.loginbox input{height:42px;border:1px solid #d9d9d9;border-radius:8px;padding:0 13px;
+  font:15px var(--font);color:#1d1c1d}
+.loginbox input:focus{outline:0;border-color:#1264a3;box-shadow:0 0 0 3px #1264a318}
+.loginbox .loginbtn{height:42px;border:0;border-radius:8px;background:#007a5a;color:#fff;
+  font:700 15px var(--font);cursor:pointer}
+.loginbox .loginbtn:hover{background:#148567}
+.loginbox .loginerr{color:#c0392b;font-size:13px;min-height:16px;text-align:center}

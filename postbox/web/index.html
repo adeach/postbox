@@ -6,6 +6,15 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div id="loginOverlay" class="loginov" style="display:none">
+  <div class="loginbox">
+    <div class="loginh">📬 Postbox</div>
+    <div class="loginsub">Enter your password to continue</div>
+    <input id="loginPw" type="password" placeholder="Password" autocomplete="current-password">
+    <div id="loginErr" class="loginerr"></div>
+    <button type="button" class="loginbtn" data-act="login">Log in</button>
+  </div>
+</div>
 <div class="app">
   <div class="side">
     <div class="wsname">📬 Postbox</div>

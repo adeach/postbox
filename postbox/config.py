@@ -57,6 +57,7 @@ class Settings:
     peers_seed: tuple[dict, ...] = ()
     terminal_cmd: str | None = None    # override the copilot launch command for spawned terminals
     spawn_wait: int = 25               # seconds to wait for a spawned agent to register
+    password: str | None = None        # UI login password (auth.password); guards /observer + /fleet + /peers
 
     @property
     def public_url(self) -> str:
@@ -68,6 +69,7 @@ def load_settings(data_dir: str | None = None) -> Settings:
     base.mkdir(parents=True, exist_ok=True)
     config = _yaml_config(base)
     fleet = config.get("fleet") if isinstance(config.get("fleet"), dict) else {}
+    auth = config.get("auth") if isinstance(config.get("auth"), dict) else {}
     peers = config.get("peers") if isinstance(config.get("peers"), list) else []
     return Settings(
         data_dir=base,
@@ -86,4 +88,5 @@ def load_settings(data_dir: str | None = None) -> Settings:
         peers_seed=tuple(peer for peer in peers if isinstance(peer, dict)),
         terminal_cmd=_optional_value("POSTBOX_TERMINAL_CMD", config, "terminal_cmd"),
         spawn_wait=_int_cfg("POSTBOX_SPAWN_WAIT", config, "spawn_wait", 25),
+        password=_optional_value("POSTBOX_PASSWORD", auth, "password"),
     )

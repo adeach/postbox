@@ -1,4 +1,5 @@
-from postbox.auth import new_id, now_iso, generate_token, hash_token
+from postbox.auth import (new_id, now_iso, generate_token, hash_token,
+                          make_session_cookie, valid_session_cookie)
 
 
 def test_new_id_unique():
@@ -15,3 +16,13 @@ def test_token_hash_is_stable_and_matches():
     assert len(tok) >= 32
     assert hash_token(tok) == hash_token(tok)
     assert hash_token(tok) != hash_token(generate_token())
+
+
+def test_session_cookie_roundtrip_and_rejects_tampering():
+    cookie = make_session_cookie("adeesh")
+    assert valid_session_cookie("adeesh", cookie)          # right password → valid
+    assert not valid_session_cookie("wrong", cookie)       # different password → invalid
+    assert not valid_session_cookie("adeesh", cookie + "x")  # tampered → invalid
+    assert not valid_session_cookie("adeesh", None)        # no cookie → invalid
+    assert not valid_session_cookie("", cookie)            # no password configured → invalid
+

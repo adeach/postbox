@@ -18,7 +18,7 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `postbox/config.py` — Settings loaded from `~/.postbox/config.yaml` (precedence env>yaml>default, null-safe): data dir, db path, host/port, fleet knobs, + federation `instance` name and `peers_seed`.
 - `postbox/schema.sql` — DDL for agents/messages/recipients/attachments/events.
 - `postbox/db.py` — single shared aiosqlite connection (WAL) + serialized writes.
-- `postbox/auth.py` — id/time/token helpers (uuid, iso time, token gen/hash).
+- `postbox/auth.py` — id/time/token helpers (uuid, iso time, token gen/hash) + UI session-cookie sign/verify (hmac with the password).
 - `postbox/models.py` — Pydantic request/response models.
 - `postbox/agents.py` — agent service: register, directory, token lookup.
 - `postbox/events.py` — event log + in-process bus + race-free SSE replay handoff.
