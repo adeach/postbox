@@ -1,25 +1,22 @@
-# Status — Postbox federation build
+# Postbox — status
 
-## Goal — DONE (v1)
-`agent@instance` federation per `docs/superpowers/specs/2026-07-06-postbox-federation-design.md`.
-Relay-failure = soft-success. Direct 1:1 peering.
+## Current
+All agent-management work MERGED to `main` (HEAD 7e08fcf), 162 tests pass.
+Laptop server runs from `main` on :8765 (real ~/.postbox data + federation peer `vm`).
+Mutagen syncs `main` → VM `~/mutagen/messaging` (in sync).
 
-## Branch / worktree
-`feat/federation` in `.worktrees/federation` (NOT main; NOT pushed).
+## Shipped this session (on main)
+- Resumable identities: session_key (COPILOT_AGENT_SESSION_ID) reattach; persist on exit.
+- UI Forget (soft) + session-id chip; 💬 Chat button on agent/terminal rows.
+- Terminal agents: spin up interactive copilot in tmux (postbox_<name>), --allow-tool=postbox (no prompt), UI + /terminals + Bearer /spawn.
+- spawn_terminal MCP tool (agent spawns + chats another copilot), waits for registration.
+- All-conversations read-only watch view.
+- Cross-instance remote spawn: spawn_terminal(instance=peer) -> /federation/spawn (peer-token), addressable name@peer. terminal_cmd + spawn_wait config.
 
-## Shipped (gpt-5.5 subagents wrote each stage; reviewed + committed per stage)
-1. `~/.postbox/config.yaml` loader (instance + peers_seed; env>yaml>default, null-safe) + pyyaml.
-2. `peers` table + `PeerService` + `/peers` admin API (observer-guarded, token redacted, no-clobber seed).
-3. `parse_address` + `AgentService.ensure_remote` stub rows (idempotent, offline).
-4. Send-routing to peers (store-to-stub + injectable relay, soft-success) + `POST /federation/inbound`
-   (peer-token auth, anti-spoof from-domain, idempotent, thread_id propagation) + `_store` core.
-5. UI first-contact (`Message name@peer` for known peers) + subtle remote badge.
-6. `scripts/federation_e2e.py` (two real peered servers, both-way relay, shared thread, idempotent) + docs.
+## Next: real cross-VM test (needs VM postbox restart)
+1. On VM: restart postbox from ~/mutagen/messaging (picks up synced new code). config.yaml (~/.postbox) unchanged.
+2. Verify laptop->VM /federation/spawn relay (curl or a fresh copilot's spawn_terminal(instance=vm)).
+3. Chat helper@vm.
 
-## Verify
-- Unit: `cd .worktrees/federation && ../../.venv/bin/python -m pytest -q`  → 132 passing.
-- Live: `../../.venv/bin/python -m scripts.federation_e2e`  → PASS (exit 0).
-
-## Next / open
-- NOT pushed / no PR. Merge to main on the maintainer's go (like the earlier fleet consolidation).
-- Phase-2 follow-ups in `doc/backlog.md` (read-receipt relay, store-and-forward queue, directory sync, presence relay).
+## Backlog
+- doc/backlog.md — federation phase-2 (receipts/presence relay), auth gap, etc.
