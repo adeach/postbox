@@ -32,10 +32,16 @@ class Database:
             "wakeup_target": "TEXT",
             "status": "TEXT NOT NULL DEFAULT 'online'",
             "last_seen": "TEXT",
+            "session_key": "TEXT",
         }
         for col, decl in adds.items():
             if col not in cols:
                 await self._conn.execute(f"ALTER TABLE agents ADD COLUMN {col} {decl};")
+        # one Copilot session ↔ one identity (the reattach key). Created here, not in
+        # schema.sql, because the column may not exist until the ALTER above runs.
+        await self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_agents_session_key "
+            "ON agents(session_key) WHERE session_key IS NOT NULL;")
         # A row that predates the status column has no live SSE session behind it,
         # so it must NOT appear online. The ADD COLUMN default is 'online' (correct
         # for new registrations); flip pre-existing rows to 'offline' on first upgrade.

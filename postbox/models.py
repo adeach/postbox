@@ -11,6 +11,7 @@ class RegisterAgent(BaseModel):
     address: str | None = None  # v2: optional; defaults to name
     profile: dict | None = None
     wakeup: Wakeup = Wakeup()
+    session_key: str | None = None  # COPILOT_AGENT_SESSION_ID; reattach key across resumes
 
 
 class AgentOut(BaseModel):
@@ -56,6 +57,7 @@ class AgentFull(BaseModel):
     address: str
     profile: dict | None = None
     status: str = "online"
+    session_key: str | None = None   # Copilot session id, so the UI can show/resume it
 
 
 class ThreadSummary(BaseModel):

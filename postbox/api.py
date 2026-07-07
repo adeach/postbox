@@ -162,6 +162,19 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(404, str(e))
 
+    @app.delete("/observer/agents/{agent_id}", status_code=204,
+                dependencies=[Depends(require_observer)])
+    async def observer_forget(agent_id: str):
+        # "Forget": hide from the directory but KEEP its messages/threads/session id
+        # intact (soft deregister). If it happens to be a fleet agent, stop managing it
+        # too, else the Supervisor would keep spawning turns for a now-hidden identity.
+        agent = await app.state.agents.get_by_id(agent_id)
+        if agent:
+            await app.state.supervisor.kill(agent.address)
+            await app.state.fleet.remove(agent.address)
+        await app.state.agents.deregister(agent_id)
+        return None
+
     @app.get("/fleet", response_model=list[FleetAgentOut],
              dependencies=[Depends(require_observer)])
     async def fleet_list():

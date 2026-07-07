@@ -25,11 +25,12 @@ class ObserverService:
         the stored `status` latch). Online agents first, then by address."""
         online = self.bus.online_ids()
         rows = await self.db.fetchall(
-            "SELECT id,name,address,profile FROM agents "
+            "SELECT id,name,address,profile,session_key FROM agents "
             "WHERE status<>'deregistered' ORDER BY address")
         items = [AgentFull(id=r[0], name=r[1], address=r[2],
                            profile=json.loads(r[3]) if r[3] else None,
-                           status="online" if r[0] in online else "offline")
+                           status="online" if r[0] in online else "offline",
+                           session_key=r[4])
                  for r in rows]
         items.sort(key=lambda a: (a.status != "online", a.address))
         return items

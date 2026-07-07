@@ -45,6 +45,32 @@ async def test_observer_agents(client):
     assert any(x["address"] == "alice" for x in rows)
 
 
+async def test_observer_agents_exposes_session_key(client):
+    # a session_key set at register is surfaced so the UI can show/resume it
+    await client.post("/agents", json={"name": "carol", "session_key": "sess-xyz"})
+    rows = (await client.get("/observer/agents")).json()
+    carol = [x for x in rows if x["address"] == "carol"][0]
+    assert carol["session_key"] == "sess-xyz"
+
+
+async def test_observer_forget_hides_but_keeps_messages(client):
+    a = await _reg(client, "alice"); b = await _reg(client, "bob")
+    ah = {"Authorization": f"Bearer {a['token']}"}
+    r = await client.post("/messages", headers=ah,
+                          json={"to": "bob", "body": "hi", "subject": "s"})
+    tid = r.json()["thread_id"]
+    # forget bob
+    d = await client.delete(f"/observer/agents/{b['id']}")
+    assert d.status_code == 204
+    # bob is hidden from the directory...
+    rows = (await client.get("/observer/agents")).json()
+    assert all(x["address"] != "bob" for x in rows)
+    # ...but the thread + its message survive (nothing deleted)
+    detail = (await client.get(f"/observer/threads/{tid}")).json()
+    assert detail["messages"][0]["body"] == "hi"
+    assert "bob" in detail["members"]
+
+
 async def test_create_identity_and_send_as(client):
     a = await _reg(client, "alice")
     me = (await client.post("/observer/identity", json={"name": "adam"})).json()

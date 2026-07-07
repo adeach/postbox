@@ -10,6 +10,22 @@ class AgentService:
         self.db = db
 
     async def register(self, payload: RegisterAgent) -> RegisterResult:
+        # Reattach: a resumed Copilot session carries the same session_key, so it
+        # rebinds to its existing identity (same inbox/threads) instead of creating a
+        # new one. Rotate the token, flip back online (un-hides a 'forgotten' row too).
+        if payload.session_key:
+            row = await self.db.fetchone(
+                "SELECT id,name,address,profile FROM agents WHERE session_key=?",
+                (payload.session_key,))
+            if row:
+                token = generate_token()
+                await self.db.execute(
+                    "UPDATE agents SET token_hash=?, status='online', last_seen=? "
+                    "WHERE id=?", (hash_token(token), now_iso(), row[0]))
+                return RegisterResult(
+                    id=row[0], name=row[1], address=row[2],
+                    profile=json.loads(row[3]) if row[3] else None, token=token)
+
         agent_id = new_id()
         name = payload.name or f"copilot-{agent_id[:8]}"
         address = payload.address or name
@@ -21,12 +37,13 @@ class AgentService:
         now = now_iso()
         await self.db.execute(
             "INSERT INTO agents(id,name,address,profile,token_hash,created_at,"
-            "wakeup_kind,wakeup_target,status,last_seen) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "wakeup_kind,wakeup_target,status,last_seen,session_key) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (agent_id, name, address,
              json.dumps(payload.profile) if payload.profile else None,
              hash_token(token), now,
-             payload.wakeup.kind, payload.wakeup.target, "online", now),
+             payload.wakeup.kind, payload.wakeup.target, "online", now,
+             payload.session_key),
         )
         return RegisterResult(id=agent_id, name=name, address=address,
                               profile=payload.profile, token=token)
@@ -103,6 +120,14 @@ class AgentService:
     async def get_by_address(self, address: str) -> AgentOut | None:
         row = await self.db.fetchone(
             "SELECT id,name,address,profile,status FROM agents WHERE address=?", (address,))
+        if not row:
+            return None
+        return AgentOut(id=row[0], name=row[1], address=row[2],
+                        profile=json.loads(row[3]) if row[3] else None, status=row[4])
+
+    async def get_by_id(self, agent_id: str) -> AgentOut | None:
+        row = await self.db.fetchone(
+            "SELECT id,name,address,profile,status FROM agents WHERE id=?", (agent_id,))
         if not row:
             return None
         return AgentOut(id=row[0], name=row[1], address=row[2],

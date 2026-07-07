@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS agents (
   wakeup_kind   TEXT NOT NULL DEFAULT 'none',
   wakeup_target TEXT,
   status        TEXT NOT NULL DEFAULT 'online',
-  last_seen     TEXT
+  last_seen     TEXT,
+  session_key   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (

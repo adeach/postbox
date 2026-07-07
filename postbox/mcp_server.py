@@ -77,13 +77,14 @@ class Session:
     deregister on exit (the identity outlives the turn)."""
 
     def __init__(self, client, pane: str | None, desired_name: str | None,
-                 runner=None, token: str | None = None):
+                 runner=None, token: str | None = None, session_key: str | None = None):
         self.client = client
         self.pane = pane
         self.desired_name = desired_name
         self._runner = runner                  # injected tmux runner for tests
         self.token: str | None = token
         self._durable = token is not None      # provided token → don't register/deregister
+        self.session_key = session_key         # COPILOT_AGENT_SESSION_ID → resumable identity
         self.tools: MailTools | None = MailTools(client, token) if token else None
         self._task: asyncio.Task | None = None
 
@@ -93,6 +94,8 @@ class Session:
             body = {"wakeup": wakeup}
             if self.desired_name:
                 body["name"] = self.desired_name
+            if self.session_key:
+                body["session_key"] = self.session_key
             r = await self.client.post("/agents", json=body)
             r.raise_for_status()
             self.token = r.json()["token"]
@@ -135,7 +138,10 @@ class Session:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-        if self.token and not self._durable:
+        # A resumable identity (has a session_key) must PERSIST on exit so it stays
+        # listed (offline) and can be resumed later — presence drops automatically when
+        # the SSE connection closes. Only a non-resumable ephemeral session is deregistered.
+        if self.token and not self._durable and not self.session_key:
             with contextlib.suppress(Exception):
                 await self.client.delete(
                     "/agents/self", headers={"Authorization": f"Bearer {self.token}"})
@@ -146,10 +152,12 @@ def build_server():
     token = os.environ.get("POSTBOX_TOKEN")     # fleet mode: act as this durable identity
     pane = os.environ.get("TMUX_PANE")          # inherited inside a tmux pane
     name = os.environ.get("POSTBOX_NAME")       # optional desired name
+    session_key = os.environ.get("COPILOT_AGENT_SESSION_ID")  # resume → same identity
     client = httpx.AsyncClient(base_url=url)
     # A durable/fleet identity (token provided) is headless spawn-on-arrival — it must
     # never set up a tmux wakeup on an inherited pane, so ignore TMUX_PANE in that mode.
-    session = Session(client, pane=(None if token else pane), desired_name=name, token=token)
+    session = Session(client, pane=(None if token else pane), desired_name=name,
+                      token=token, session_key=(None if token else session_key))
 
     @asynccontextmanager
     async def lifespan(_server):

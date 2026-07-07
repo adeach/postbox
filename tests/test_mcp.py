@@ -84,3 +84,42 @@ async def test_session_autoregisters_with_pane_and_wakes(tmp_path):
     finally:
         server.should_exit = True
         await task
+
+
+async def test_session_key_persists_on_stop_and_reattaches(tmp_path):
+    """A session_key-bearing identity PERSISTS on stop (stays listed, resumable) and a
+    second session with the same key reattaches to the SAME identity — the resume path.
+    Contrast with the test above: a keyless session is deregistered (hidden) on stop.
+    """
+    app = create_app(str(tmp_path / "data"))
+    cfg = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error", lifespan="on")
+    server = uvicorn.Server(cfg)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+    port = server.servers[0].sockets[0].getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    try:
+        async with AsyncClient(base_url=base) as c:
+            s1 = Session(client=c, pane=None, desired_name="carol", session_key="sess-carol")
+            await s1.start()
+            rows = (await c.get("/observer/agents")).json()
+            carol = [a for a in rows if a["address"] == "carol"][0]
+            assert carol["session_key"] == "sess-carol"
+            agent_id = carol["id"]
+            await s1.stop()
+            # PERSISTED: still listed after stop (not deregistered/hidden)
+            listed = (await c.get("/agents")).json()
+            assert any(a["address"] == "carol" for a in listed)
+            # RESUME: same key → same identity (reattach), fresh token
+            s2 = Session(client=c, pane=None, desired_name="carol", session_key="sess-carol")
+            await s2.start()
+            try:
+                again = [a for a in (await c.get("/observer/agents")).json()
+                         if a["address"] == "carol"][0]
+                assert again["id"] == agent_id       # same row, not a duplicate
+            finally:
+                await s2.stop()
+    finally:
+        server.should_exit = True
+        await task

@@ -275,7 +275,10 @@ async function refreshFleet(force){
     const human = isHuman(a.address), online = isOnline(a.address);
     const dot = human ? "#8a4fc4" : (online ? "#17a673" : "#b8bcc4");
     const meta = [human ? "person" : (online ? "online" : "offline"), inFleet.has(a.address) ? "in fleet" : ""].filter(Boolean).join(" · ");
-    return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span><span class="meta">${esc(meta)}</span></div>`;
+    const sid = a.session_key
+      ? `<button class="sidchip" data-act="copysid" data-val="${esc(a.session_key)}" title="Copy session id — resume this agent with:  copilot --resume ${esc(a.session_key)}">↻ ${esc(a.session_key.slice(0,8))}</button>`
+      : "";
+    return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span>${sid}<span class="meta">${esc(meta)}</span><button class="fx" data-act="forget" data-val="${esc(a.id)}" title="Forget — hide from this list (keeps its messages + session)">✕</button></div>`;
   }).join("") || `<div class="fnote">No agents registered yet.</div>`;
   host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
     + `<div class="fgrp">All registered agents <span class="fgc">${AGENTS.length} with an inbox</span></div><div class="fdir">${dir}</div>`;
@@ -307,6 +310,23 @@ async function fleetAction(op, addr){
     }
     await loadAgents(); await refreshFleet(true);
   }catch(e){ alert(`Fleet ${op} failed — `+String(e.message||e).slice(0,160)); }
+}
+
+async function forgetAgent(id){
+  const a = AGENTS.find(x=>x.id===id);
+  const who = a ? a.name : id;
+  if(!confirm(`Forget ${who}?\n\nIt disappears from this list, but its messages and session are kept — resume its session to bring it back.`)) return;
+  fleetPausedUntil = Date.now() + 1500;
+  try{
+    await j("/observer/agents/"+encodeURIComponent(id), {method:"DELETE"});
+    await loadAgents(); await refreshFleet(true);
+  }catch(e){ alert("Could not forget — "+String(e.message||e).slice(0,160)); }
+}
+
+async function copySid(sid, btn){
+  try{ await navigator.clipboard.writeText(sid); }
+  catch(e){ prompt("Copy this session id (resume with  copilot --resume <id>):", sid); return; }
+  if(btn){ const o = btn.textContent; btn.textContent = "✓ copied"; setTimeout(()=>{ btn.textContent = o; }, 1200); }
 }
 
 function connectLive(){
@@ -345,6 +365,8 @@ document.addEventListener("click", e=>{
   if(a==="fleetrefresh") return refreshFleet(true);
   if(a==="fleet") return fleetAction(t.dataset.op, t.dataset.val);
   if(a==="fleetadd") return addFleetAgent();
+  if(a==="forget") return forgetAgent(t.dataset.val);
+  if(a==="copysid") return copySid(t.dataset.val, t);
 });
 
 (async function boot(){
