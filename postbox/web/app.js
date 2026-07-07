@@ -89,6 +89,7 @@ function renderSidebar(){
     ? `Impersonating <b>${esc(nameOf(viewer))}</b> · <a href="#" data-act="asme">back to you</a>`
     : `You’re signed in as ${esc(nameOf(YOU))}`;
   $("navFleet").classList.toggle("active", panel==="fleet");
+  $("navAll").classList.toggle("active", panel==="allconv");
   const list = $("dmList"); list.innerHTML = "";
   THREADS.forEach(t=>{
     const o = otherOf(t), un = unreadFor(t);
@@ -108,27 +109,32 @@ function emptyMain(){
   showComposer(false);
 }
 
-async function showThread(id){
-  openId = id; panel = "chat"; draftTo = null;
+async function showThread(id, readOnly=false){
+  openId = id; panel = readOnly ? "allconv" : "chat"; draftTo = null;
   const d = await j("/observer/threads/"+encodeURIComponent(id));
   const o = (d.members||[]).find(m=>m!==viewer) || (d.members||[])[0] || "";
   _openOther = o;
-  $("mTitle").innerHTML = `${esc(nameOf(o))}${remoteTag(o)}`;
-  $("mSub").textContent = isHuman(o) ? "person" : (isOnline(o) ? "online" : "offline");
+  if(readOnly){
+    $("mTitle").innerHTML = (d.members||[]).map(m=>`${esc(nameOf(m))}${remoteTag(m)}`).join(' <span class="convarrow">↔</span> ') || "conversation";
+    $("mSub").textContent = "read-only · watching";
+  } else {
+    $("mTitle").innerHTML = `${esc(nameOf(o))}${remoteTag(o)}`;
+    $("mSub").textContent = isHuman(o) ? "person" : (isOnline(o) ? "online" : "offline");
+  }
   const msgs = $("msgs"); msgs.innerHTML = "";
   (d.messages||[]).forEach(m=>{
     const row = document.createElement("div"); row.className = "msg";
     row.innerHTML = `<div class="av" style="background:${colorFor(m.from)}">${initials(nameOf(m.from))}</div>`
       + `<div><div class="l1"><span class="who">${esc(nameOf(m.from))}</span><span class="t">${(m.created_at||'').slice(11,16)}</span></div>`
-      + `<div class="txt">${esc(m.body)}</div>${receiptHtml(m)}</div>`;
+      + `<div class="txt">${esc(m.body)}</div>${readOnly?"":receiptHtml(m)}</div>`;
     msgs.appendChild(row);
   });
   msgs.scrollTop = msgs.scrollHeight;
   _lastMsgId = (d.messages && d.messages.length) ? d.messages[d.messages.length-1].id : null;
-  showComposer(true);
-  $("cinput").placeholder = `Message ${nameOf(o)}${impersonating()?` as ${nameOf(viewer)}`:''}…`;
-  // email-style auto-read — ONLY as a human reading their own inbox; never when impersonating an agent.
-  if(!impersonating() && isHuman(viewer) && (d.members||[]).includes(viewer)){
+  showComposer(!readOnly);
+  if(!readOnly) $("cinput").placeholder = `Message ${nameOf(o)}${impersonating()?` as ${nameOf(viewer)}`:''}…`;
+  // email-style auto-read — ONLY as a human reading their own inbox; never when impersonating or watching.
+  if(!readOnly && !impersonating() && isHuman(viewer) && (d.members||[]).includes(viewer)){
     try{
       const res = await j("/observer/read", {method:"POST", headers:{'content-type':'application/json'},
         body: JSON.stringify({as: viewer, thread_id: id})});
@@ -136,6 +142,27 @@ async function showThread(id){
     }catch(e){ /* non-fatal */ }
   }
   renderSidebar();
+}
+
+// Read-only "watch everything" view — every thread, incl. agent↔agent + remote,
+// without impersonating. Backed by the identity-agnostic /observer/threads.
+async function openAllConv(){
+  panel = "allconv"; openId = null; draftTo = null; closeVas(); closeSearch();
+  $("mTitle").textContent = "All conversations";
+  $("mSub").textContent = "every thread — read-only";
+  showComposer(false);
+  renderSidebar();
+  let all = [];
+  try{ all = await j("/observer/threads"); }catch(e){ all = []; }
+  const rows = all.map(t=>{
+    const members = (t.members||[]).map(m=>nameOf(m)).join(", ") || "(no members)";
+    const last = t.last||{}; const when = (last.at||"").slice(11,16);
+    const subj = t.subject ? `<span class="convsubj">${esc(t.subject)}</span>` : "";
+    return `<div class="convrow" data-act="openall" data-val="${esc(t.thread_id)}">`
+      + `<div class="convtop"><span class="convmem">${esc(members)}</span>${subj}<span class="convwhen">${esc(when)}</span></div>`
+      + `<div class="convlast">${last.from?`<b>${esc(nameOf(last.from))}:</b> `:""}${esc((last.text||"").slice(0,140))}</div></div>`;
+  }).join("") || `<div class="fnote">No conversations yet.</div>`;
+  $("msgs").innerHTML = `<div class="conv">${rows}</div>`;
 }
 
 async function doSend(){
@@ -378,6 +405,7 @@ function connectLive(){
   const es = new EventSource(url);
   const refresh = async ()=>{
     if(panel==="fleet") return;                 // Fleet is manual-refresh (the ↻ button)
+    if(panel==="allconv"){ if(openId){ await showThread(openId, true); } else { await openAllConv(); } return; }
     await loadThreads(); renderSidebar();
     if(openId) await showThread(openId);
   };
@@ -414,6 +442,8 @@ document.addEventListener("click", e=>{
   if(a==="copytext") return copyText(t.dataset.val, t);
   if(a==="termspawn") return spawnTerminal();
   if(a==="termkill") return killTerminal(t.dataset.val);
+  if(a==="showall") return openAllConv();
+  if(a==="openall") return showThread(t.dataset.val, true);
 });
 
 (async function boot(){

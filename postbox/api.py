@@ -202,6 +202,20 @@ def create_app(data_dir: str | None = None) -> FastAPI:
             raise HTTPException(503, str(e))
         return None
 
+    @app.post("/spawn", status_code=201)
+    async def agent_spawn(payload: TerminalIn, agent: AgentOut = Depends(current_agent)):
+        # Agent-facing spawn: any registered agent can spin up an interactive copilot and
+        # then message it. Waits until the new agent registers so the caller can send
+        # to it right away. (The UI uses the observer-guarded /terminals; this is Bearer.)
+        try:
+            res = await app.state.terminals.spawn(payload.name, payload.cwd)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+        res["registered"] = await app.state.terminals.wait_registered(payload.name)
+        return res
+
     @app.get("/fleet", response_model=list[FleetAgentOut],
              dependencies=[Depends(require_observer)])
     async def fleet_list():

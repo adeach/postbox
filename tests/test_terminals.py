@@ -76,16 +76,25 @@ async def test_spawn_rejects_bad_cwd(db):
     assert r.calls == []
 
 
-async def test_spawn_rejects_existing_online_agent_but_allows_forgotten(db):
+async def test_spawn_rejects_existing_name_online_or_forgotten(db):
     agents = AgentService(db)
     a = await agents.register(RegisterAgent(name="alice"))     # status='online'
     r = FakeRunner()
     svc = TerminalService(SimpleNamespace(port=8765), agents, runner=r)
     with pytest.raises(ValueError):
-        await svc.spawn("alice")                    # name in use → reject
+        await svc.spawn("alice")                    # online name → reject
     await agents.deregister(a.id)                   # 'forget' it
-    res = await svc.spawn("alice")                  # now the name is reusable
-    assert res["session"] == "postbox_alice"
+    with pytest.raises(ValueError):
+        await svc.spawn("alice")                    # STILL reserved (would 409 at register)
+    assert r.calls == []                            # nothing spawned either time
+
+
+async def test_wait_registered(db):
+    agents = AgentService(db)
+    svc = TerminalService(SimpleNamespace(port=8765), agents, runner=FakeRunner())
+    assert await svc.wait_registered("ghost", timeout=0.15) is False   # never appears
+    await agents.register(RegisterAgent(name="real"))
+    assert await svc.wait_registered("real", timeout=0.15) is True
 
 
 async def test_spawn_surfaces_tmux_failure(db):
@@ -113,3 +122,30 @@ async def test_kill_builds_argv_and_validates(db):
     assert r.calls[0] == ["tmux", "kill-session", "-t", "postbox_alice"]
     with pytest.raises(ValueError):
         await svc.kill("bad name")
+
+
+async def test_spawn_endpoint_is_bearer_authed(tmp_path):
+    """POST /spawn: any registered AGENT can spin up a terminal (Bearer, not observer),
+    and the response includes the tmux attach cmd + whether it registered in time."""
+    from httpx import ASGITransport, AsyncClient
+    from postbox.api import create_app
+    app = create_app(str(tmp_path / "data"))
+    async with app.router.lifespan_context(app):
+        # swap in a fake-runner terminal service (no real tmux/copilot) with a short wait
+        app.state.terminals = TerminalService(
+            SimpleNamespace(port=8765), app.state.agents, runner=FakeRunner())
+        app.state.terminals.spawn_wait = 0.2
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+            caller = (await c.post("/agents", json={"name": "caller"})).json()
+            h = {"Authorization": f"Bearer {caller['token']}"}
+            r = await c.post("/spawn", headers=h, json={"name": "helper"})
+            assert r.status_code == 201
+            d = r.json()
+            assert d["session"] == "postbox_helper"
+            assert d["attach"] == "tmux attach -t postbox_helper"
+            assert d["registered"] is False          # no real copilot registered it
+            # no bearer token → 401 (not open like the observer UI route)
+            assert (await c.post("/spawn", json={"name": "helper2"})).status_code == 401
+            # collision with the caller's own name → 409
+            assert (await c.post("/spawn", headers=h,
+                                 json={"name": "caller"})).status_code == 409

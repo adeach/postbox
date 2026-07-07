@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import time
 
 # tmux session names can't contain '.' or ':'; keep it tight and also safe to reuse
 # verbatim as the POSTBOX_NAME. Validated at the trust boundary (this spawns processes).
@@ -23,6 +24,7 @@ class TerminalService:
         self.agents = agents
         self._run = runner or self._run_tmux
         self.program = list(program)
+        self.spawn_wait = 25.0        # seconds to wait for a spawned agent to register
 
     async def _run_tmux(self, argv: list[str]) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
@@ -39,12 +41,13 @@ class TerminalService:
             raise ValueError("name must be 1–40 chars: letters, digits, '_' or '-'")
         if cwd is not None and not os.path.isdir(cwd):
             raise ValueError(f"cwd is not a directory: {cwd}")
-        # a live identity by this name would make the spawned agent's registration 409;
-        # reject up front with a clear message (a 'forgotten' row is fine to reuse).
+        # a row by this name (even a 'forgotten'/offline one) still holds the address,
+        # so the spawned copilot's registration would 409. Reject up front, clearly.
         existing = await self.agents.get_by_address(name)
-        if existing is not None and existing.status != "deregistered":
+        if existing is not None:
             raise ValueError(
-                f"'{name}' is already a registered agent — pick another name or forget it")
+                f"'{name}' is already taken — pick another name "
+                "(a forgotten or offline agent still reserves its name)")
 
         session = PREFIX + name
         # point the spawned copilot's MCP back at THIS server (so it registers here
@@ -75,3 +78,14 @@ class TerminalService:
         rc, out = await self._run(["tmux", "kill-session", "-t", PREFIX + name])
         if rc != 0:
             raise RuntimeError(f"tmux kill-session failed: {out.strip() or rc}")
+
+    async def wait_registered(self, name: str, timeout: float | None = None) -> bool:
+        """Poll until the freshly-spawned copilot has registered its identity (so the
+        caller can message it immediately instead of hitting 'unknown recipient').
+        The spawn pre-check guarantees no row existed, so any appearance is the new one."""
+        deadline = time.monotonic() + (self.spawn_wait if timeout is None else timeout)
+        while time.monotonic() < deadline:
+            if await self.agents.get_by_address(name) is not None:
+                return True
+            await asyncio.sleep(0.5)
+        return False
