@@ -24,7 +24,12 @@ class TerminalService:
         self.s = settings
         self.agents = agents
         self._run = runner or self._run_tmux
-        self.program = list(program) if program else ["copilot", "--allow-tool=postbox"]
+        # ponytail: --allow-all-tools = spawned workers run shell/build/git/restart unattended
+        # (the whole point: autonomous agents that survive a laptop close). Scope down via the
+        # terminal_cmd config if you don't want that breadth. --allow-all-mcp-server-instructions
+        # delivers the postbox collaboration instructions into the worker's system prompt.
+        self.program = list(program) if program else [
+            "copilot", "--allow-all-tools", "--allow-all-mcp-server-instructions"]
         self.spawn_wait = 25.0        # seconds to wait for a spawned agent to register
 
     async def _run_tmux(self, argv: list[str]) -> tuple[int, str]:
