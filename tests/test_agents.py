@@ -111,3 +111,15 @@ async def test_register_without_session_key_is_independent(db):
     a = await svc.register(RegisterAgent())
     b = await svc.register(RegisterAgent())
     assert a.id != b.id
+
+
+async def test_set_status_does_not_resurrect_forgotten_agent(db):
+    """An SSE connect/disconnect (set_status) must NOT un-hide a forgotten agent —
+    otherwise a still-running copilot reconnecting resurrects an agent you removed."""
+    svc = AgentService(db)
+    a = await svc.register(RegisterAgent(name="ghost"))
+    await svc.deregister(a.id)                                  # forget it
+    await svc.set_status(a.id, "online")                       # SSE reconnect fires this
+    assert all(x.address != "ghost" for x in await svc.directory(online_ids={a.id}))
+    row = await db.fetchone("SELECT status FROM agents WHERE id=?", (a.id,))
+    assert row[0] == "deregistered"                            # stayed forgotten

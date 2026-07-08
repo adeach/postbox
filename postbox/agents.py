@@ -77,8 +77,11 @@ class AgentService:
         return await self._get(agent_id)
 
     async def set_status(self, agent_id: str, status: str) -> None:
+        # never resurrect a 'forgotten' (deregistered) identity: an SSE connect/disconnect
+        # must not un-hide it. Coming back requires an explicit reattach (session_key) or
+        # re-register, both of which write status directly elsewhere.
         await self.db.execute(
-            "UPDATE agents SET status=?, last_seen=? WHERE id=?",
+            "UPDATE agents SET status=?, last_seen=? WHERE id=? AND status<>'deregistered'",
             (status, now_iso(), agent_id))
 
     async def deregister(self, agent_id: str) -> None:

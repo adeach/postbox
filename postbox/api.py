@@ -215,8 +215,18 @@ def create_app(data_dir: str | None = None) -> FastAPI:
 
     @app.post("/terminals", status_code=201, dependencies=[Depends(require_observer)])
     async def terminals_spawn(payload: TerminalIn):
+        # remote instance → relay the spawn to that peer (like the agent-facing /spawn)
+        if payload.instance and payload.instance != settings.instance:
+            try:
+                return await app.state.federation.spawn_remote(
+                    payload.name, payload.cwd, payload.instance, payload.model)
+            except ValueError as e:
+                raise HTTPException(404, str(e))
+            except Exception as e:
+                raise HTTPException(502, f"remote spawn failed: {e}")
         try:
-            return await app.state.terminals.spawn(payload.name, payload.cwd, payload.model)
+            return await app.state.terminals.spawn(
+                payload.name, payload.cwd, payload.model)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:
@@ -314,6 +324,32 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     async def peers_remove(name: str):
         await app.state.peers.remove(name)
         return None
+
+    @app.get("/health")
+    async def health():
+        # cheap, unauthenticated liveness probe — also lets a peer read our instance name.
+        return {"ok": True, "instance": settings.instance}
+
+    @app.get("/peers/health", dependencies=[Depends(require_observer)])
+    async def peers_health():
+        # ping each configured peer so the UI can show the federation link status. Any HTTP
+        # response means the peer's postbox is UP (even a 404 from an older build without
+        # /health); only a network error counts as unreachable. Read its instance if given.
+        import httpx
+        out = []
+        for p in await app.state.peers.list_peers():
+            reachable, inst = False, None
+            try:
+                async with httpx.AsyncClient(timeout=3) as c:
+                    r = await c.get(f"{p['url']}/health")
+                    reachable = True
+                    if r.status_code == 200:
+                        inst = r.json().get("instance")
+            except Exception:
+                pass
+            out.append({"name": p["name"], "url": p["url"],
+                        "reachable": reachable, "instance": inst})
+        return out
 
     @app.post("/federation/inbound", status_code=201)
     async def federation_inbound(

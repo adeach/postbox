@@ -276,9 +276,11 @@ function openFleet(){
     </div>
     <div class="faddbar term">
       <input id="tName" placeholder="terminal agent name (e.g. alice)" autocomplete="off">
+      <select id="tInstance" title="Where to spawn"><option value="">on this box</option></select>
+      <input id="tModel" placeholder="model (optional)" autocomplete="off">
       <input id="tCwd" placeholder="cwd (optional)" autocomplete="off">
       <button data-act="termspawn" class="fbtn primary">Spin up terminal</button>
-      <span class="fhint">interactive copilot in tmux — attach from your terminal</span>
+      <span class="fhint">interactive copilot in tmux — attach from its host's terminal</span>
     </div>
     <div id="fleetList"></div></div>`;
   refreshFleet(true);
@@ -293,7 +295,17 @@ async function refreshFleet(force){
   try{ await loadAgents(); }catch(e){}                    // refresh presence for the directory below
   let terms = [];
   try{ terms = await j("/terminals"); }catch(e){ terms = []; }
-  const sig = JSON.stringify([list, terms, AGENTS.map(a=>[a.address, a.status])]);
+  let peers = [];
+  try{ peers = await j("/peers/health"); }catch(e){ peers = []; }
+  // populate the "where to spawn" dropdown: this box + each reachable peer
+  const sel = $("tInstance");
+  if(sel){
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">on this box</option>`
+      + peers.map(p=>`<option value="${esc(p.name)}"${p.reachable?"":" disabled"}>on ${esc(p.name)}${p.reachable?"":" (unreachable)"}</option>`).join("");
+    sel.value = cur;
+  }
+  const sig = JSON.stringify([list, terms, peers, AGENTS.map(a=>[a.address, a.status])]);
   if(!force && sig === fleetSig) return;                  // unchanged → keep buttons live
   fleetSig = sig;
   const inFleet = new Set(list.map(a=>a.address));
@@ -341,7 +353,15 @@ async function refreshFleet(force){
     + `<button class="fchat" data-act="dm" data-val="${esc(t.name)}" title="Message ${esc(t.name)}">💬 Chat</button>`
     + `<button class="fx" data-act="termkill" data-val="${esc(t.name)}" title="Kill this terminal session (its identity/messages stay)">✕</button></div>`
   ).join("") || `<div class="fnote">No terminal agents running — spin one up above, then attach with the tmux command it gives you.</div>`;
-  host.innerHTML = `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
+  // federation peers + their live reachability (this is the "target postbox health")
+  const peerRows = peers.map(p=>
+    `<div class="fdirrow"><span class="fdot" style="background:${p.reachable?"#17a673":"#e01e5a"}"></span>`
+    + `<span class="nm">${esc(p.name)}</span>`
+    + `<span class="sidchip">${esc(p.url)}</span>`
+    + `<span class="meta">${p.reachable?`reachable${p.instance?` · ${esc(p.instance)}`:""}`:"unreachable"}</span></div>`
+  ).join("") || `<div class="fnote">No peers configured — add them in ~/.postbox/config.yaml to federate.</div>`;
+  host.innerHTML = `<div class="fgrp">Peers <span class="fgc">${peers.length} federated postbox${peers.length===1?"":"es"}</span></div><div class="fdir">${peerRows}</div>`
+    + `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
     + `<div class="fgrp">Terminal agents <span class="fgc">${terms.length} interactive</span></div><div class="fdir">${termRows}</div>`
     + `<div class="fgrp">All registered agents <span class="fgc">${AGENTS.length} with an inbox</span></div><div class="fdir">${dir}</div>`;
 }
@@ -395,14 +415,17 @@ async function spawnTerminal(){
   const name = $("tName").value.trim();
   if(!name){ alert("Enter a name for the terminal agent."); return; }
   const cwd = $("tCwd").value.trim() || null;
+  const instance = $("tInstance").value || null;
+  const model = $("tModel").value.trim() || null;
   fleetPausedUntil = Date.now() + 1500;
   try{
     const res = await j("/terminals", {method:"POST", headers:{'content-type':'application/json'},
-      body: JSON.stringify({name, cwd})});
-    $("tName").value=""; $("tCwd").value="";
+      body: JSON.stringify({name, cwd, instance, model})});
+    $("tName").value=""; $("tCwd").value=""; $("tModel").value="";
     await refreshFleet(true);
+    const where = res.address ? `on ${instance} (message it at ${res.address})` : "on this box";
     try{ await navigator.clipboard.writeText(res.attach); }catch(e){}
-    alert(`Spawned terminal agent “${res.name}”.\n\nAttach from a terminal with:\n\n    ${res.attach}\n\n(copied to your clipboard)`);
+    alert(`Spawned terminal agent “${res.name}” ${where}.\n\nAttach with:\n\n    ${res.attach}\n\n(copied to your clipboard${res.address?"; the tmux session is on "+instance:""})`);
   }catch(e){ alert("Could not spin up terminal — "+String(e.message||e).slice(0,200)); }
 }
 

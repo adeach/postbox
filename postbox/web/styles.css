@@ -193,3 +193,5 @@
   font:700 15px var(--font);cursor:pointer}
 .loginbox .loginbtn:hover{background:#148567}
 .loginbox .loginerr{color:#c0392b;font-size:13px;min-height:16px;text-align:center}
+.faddbar select{height:38px;border:1px solid #d9d9d9;border-radius:8px;padding:0 10px;font:14px var(--font);color:var(--ink);background:#fff;cursor:pointer}
+.faddbar select:focus{outline:0;border-color:#9a9a9a}
