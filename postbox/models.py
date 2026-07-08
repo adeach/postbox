@@ -157,6 +157,7 @@ class TerminalIn(BaseModel):
     name: str
     cwd: str | None = None
     instance: str | None = None      # spawn on a peer (name@instance) instead of locally
+    model: str | None = None         # per-agent model; omit to use the launcher's default
 
 
 class LoginIn(BaseModel):

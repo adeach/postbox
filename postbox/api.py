@@ -216,7 +216,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
     @app.post("/terminals", status_code=201, dependencies=[Depends(require_observer)])
     async def terminals_spawn(payload: TerminalIn):
         try:
-            return await app.state.terminals.spawn(payload.name, payload.cwd)
+            return await app.state.terminals.spawn(payload.name, payload.cwd, payload.model)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:
@@ -246,13 +246,13 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         if payload.instance and payload.instance != settings.instance:
             try:
                 return await app.state.federation.spawn_remote(
-                    payload.name, payload.cwd, payload.instance)
+                    payload.name, payload.cwd, payload.instance, payload.model)
             except ValueError as e:
                 raise HTTPException(404, str(e))
             except Exception as e:
                 raise HTTPException(502, f"remote spawn failed: {e}")
         try:
-            res = await app.state.terminals.spawn(payload.name, payload.cwd)
+            res = await app.state.terminals.spawn(payload.name, payload.cwd, payload.model)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:
@@ -269,7 +269,7 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         if await app.state.federation.peer_by_token(x_postbox_peer_token) is None:
             raise HTTPException(401, "unknown peer token")
         try:
-            res = await app.state.terminals.spawn(payload.name, payload.cwd)
+            res = await app.state.terminals.spawn(payload.name, payload.cwd, payload.model)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:

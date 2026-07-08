@@ -201,3 +201,28 @@ async def test_spawn_endpoint_routes_remote_instance_to_federation(tmp_path):
             r2 = await c.post("/spawn", headers=h,
                               json={"name": "helper2", "instance": "ghost"})
             assert r2.status_code == 404
+
+
+async def test_spawn_with_model_inserts_model_flag(db):
+    r = FakeRunner()
+    svc = _svc(db, r)
+    await svc.spawn("worker", model="claude-opus-4.8")
+    argv = r.calls[0]
+    # `--model X` sits right after the copilot binary, before its other flags
+    i = argv.index("copilot")
+    assert argv[i:i+3] == ["copilot", "--model", "claude-opus-4.8"]
+    assert "--allow-tool=postbox" in argv
+
+
+async def test_spawn_without_model_has_no_model_flag(db):
+    r = FakeRunner()
+    await _svc(db, r).spawn("worker")
+    assert "--model" not in r.calls[0]
+
+
+@pytest.mark.parametrize("bad", ["has space", "semi;rm", "a" * 61, "bad/slash"])
+async def test_spawn_rejects_bad_model(db, bad):
+    r = FakeRunner()
+    with pytest.raises(ValueError):
+        await _svc(db, r).spawn("worker", model=bad)
+    assert r.calls == []

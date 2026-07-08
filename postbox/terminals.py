@@ -6,6 +6,7 @@ import time
 # tmux session names can't contain '.' or ':'; keep it tight and also safe to reuse
 # verbatim as the POSTBOX_NAME. Validated at the trust boundary (this spawns processes).
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+MODEL_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
 PREFIX = "postbox_"
 
 
@@ -36,11 +37,14 @@ class TerminalService:
     def _attach_cmd(self, session: str) -> str:
         return f"tmux attach -t {session}"
 
-    async def spawn(self, name: str, cwd: str | None = None) -> dict:
+    async def spawn(self, name: str, cwd: str | None = None,
+                    model: str | None = None) -> dict:
         if not NAME_RE.match(name or ""):
             raise ValueError("name must be 1–40 chars: letters, digits, '_' or '-'")
         if cwd is not None and not os.path.isdir(cwd):
             raise ValueError(f"cwd is not a directory: {cwd}")
+        if model is not None and not MODEL_RE.match(model):
+            raise ValueError("model must be a plain model id (letters, digits, '.', '_', '-')")
         # a row by this name (even a 'forgotten'/offline one) still holds the address,
         # so the spawned copilot's registration would 409. Reject up front, clearly.
         existing = await self.agents.get_by_address(name)
@@ -54,10 +58,15 @@ class TerminalService:
         # regardless of the global mcp-config), and pre-name it. `env` sets the vars as
         # an arg-list (no shell) → injection-safe and portable across tmux versions.
         url = f"http://127.0.0.1:{self.s.port}"
+        # per-agent model: insert `--model X` right after the launcher binary so it
+        # overrides the model for THIS worker (e.g. give the reviewer a different model).
+        program = list(self.program)
+        if model:
+            program = [program[0], "--model", model, *program[1:]]
         argv = ["tmux", "new-session", "-d", "-s", session]
         if cwd:
             argv += ["-c", cwd]
-        argv += ["env", f"POSTBOX_NAME={name}", f"POSTBOX_URL={url}", *self.program]
+        argv += ["env", f"POSTBOX_NAME={name}", f"POSTBOX_URL={url}", *program]
         rc, out = await self._run(argv)
         if rc != 0:
             raise RuntimeError(f"tmux failed to start the session: {out.strip() or rc}")

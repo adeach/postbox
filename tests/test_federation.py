@@ -189,7 +189,7 @@ async def test_spawn_remote_relays_and_returns_address(db):
                             SimpleNamespace(instance="laptop"), spawn_relay=spawn_relay)
     res = await fed.spawn_remote("helper", None, "vm")
     assert calls == [("http://vm.example:8765", "shared-tok",
-                      {"name": "helper", "cwd": None})]
+                      {"name": "helper", "cwd": None, "model": None})]
     assert res["address"] == "helper@vm"      # how the caller then messages it
     assert res["instance"] == "vm" and res["registered"] is True
 
