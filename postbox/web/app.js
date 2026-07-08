@@ -331,10 +331,13 @@ async function refreshFleet(force){
       ${a.tail?`<details class="ftaild"${running?" open":""}><summary>Latest output</summary><pre class="ftail">${esc(a.tail)}</pre></details>`:""}
     </div>`;
   }).join("") || `<div class="fnote">No fleet agents yet — add one above and Postbox will spawn a headless turn when it gets mail.</div>`;
-  // directory: EVERY registered identity + live presence (which are online/running, who's in the fleet)
-  // sorted by name so rows stay put — presence changes update the label in place, never reorder.
-  const dir = [...AGENTS].sort((a,b)=>a.name.localeCompare(b.name)).map(a=>{
+  // directory: EVERY registered identity, split into NAMED (given a display name via set_name)
+  // vs UNNAMED (still on the auto 'copilot-xxxx' handle). Online agents sort first and are
+  // colour-highlighted; within a group rows only flip their class/label on presence, never reorder.
+  const isUnnamed = a => a.name === "copilot-" + (a.id||"").slice(0,8);
+  const dirRow = a => {
     const human = isHuman(a.address), online = isOnline(a.address);
+    const cls = human ? "person" : (online ? "online" : "offline");
     const dot = human ? "#8a4fc4" : (online ? "#17a673" : "#b8bcc4");
     const meta = [human ? "person" : (online ? "online" : "offline"), inFleet.has(a.address) ? "in fleet" : ""].filter(Boolean).join(" · ");
     const sid = a.session_key
@@ -342,8 +345,13 @@ async function refreshFleet(force){
       : "";
     const dm = a.address !== viewer;                 // can't DM the identity you're viewing as
     const chat = dm ? `<button class="fchat" data-act="dm" data-val="${esc(a.address)}" title="Message ${esc(a.name)}">💬 Chat</button>` : "";
-    return `<div class="fdirrow"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span>${sid}<span class="meta">${esc(meta)}</span>${chat}<button class="fx" data-act="forget" data-val="${esc(a.id)}" title="Forget — hide from this list (keeps its messages + session)">✕</button></div>`;
-  }).join("") || `<div class="fnote">No agents registered yet.</div>`;
+    return `<div class="fdirrow ${cls}"><span class="fdot" style="background:${dot}"></span><span class="nm">${esc(a.name)}</span>${sid}<span class="meta ${cls}">${esc(meta)}</span>${chat}<button class="fx" data-act="forget" data-val="${esc(a.id)}" title="Forget — hide from this list (keeps its messages + session)">✕</button></div>`;
+  };
+  const byOnlineThenName = (a,b) => (isOnline(b.address)-isOnline(a.address)) || a.name.localeCompare(b.name);
+  const onlineCount = arr => arr.filter(a=>isOnline(a.address)).length;
+  const namedAgents   = AGENTS.filter(a=>!isUnnamed(a)).sort(byOnlineThenName);
+  const unnamedAgents = AGENTS.filter(a=> isUnnamed(a)).sort(byOnlineThenName);
+  const dirBlock = arr => arr.map(dirRow).join("") || `<div class="fnote">None.</div>`;
   // interactive terminal agents (tmux sessions you attach to)
   const termRows = terms.map(t=>
     `<div class="fdirrow"><span class="fdot" style="background:#3d9be0"></span>`
@@ -363,7 +371,8 @@ async function refreshFleet(force){
   host.innerHTML = `<div class="fgrp">Peers <span class="fgc">${peers.length} federated postbox${peers.length===1?"":"es"}</span></div><div class="fdir">${peerRows}</div>`
     + `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
     + `<div class="fgrp">Terminal agents <span class="fgc">${terms.length} interactive</span></div><div class="fdir">${termRows}</div>`
-    + `<div class="fgrp">All registered agents <span class="fgc">${AGENTS.length} with an inbox</span></div><div class="fdir">${dir}</div>`;
+    + `<div class="fgrp">Named agents <span class="fgc">${namedAgents.length} identit${namedAgents.length===1?"y":"ies"} · ${onlineCount(namedAgents)} online</span></div><div class="fdir">${dirBlock(namedAgents)}</div>`
+    + `<div class="fgrp">Unnamed agents <span class="fgc">${unnamedAgents.length} on auto <code>copilot-…</code> handles · ${onlineCount(unnamedAgents)} online</span></div><div class="fdir">${dirBlock(unnamedAgents)}</div>`;
 }
 
 async function addFleetAgent(){

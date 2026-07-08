@@ -178,6 +178,16 @@
 .fdirrow .fchat{margin-left:12px;border:1px solid #cfe0d8;background:#eefaf4;color:#127a52;
   font:600 12.5px var(--font);cursor:pointer;padding:4px 12px;border-radius:7px;flex:0 0 auto}
 .fdirrow .fchat:hover{background:#127a52;color:#fff;border-color:#127a52}
+/* directory colour-coding: online highlighted green, offline muted, humans purple */
+.fdirrow.online{background:#f3fbf7;box-shadow:inset 3px 0 0 #17a673}
+.fdirrow.online:hover{background:#ecf8f2}
+.fdirrow.online .nm{color:#0f5132}
+.fdirrow.offline .nm{color:#828892;font-weight:600}
+.fdirrow.person{background:#faf7fe;box-shadow:inset 3px 0 0 #8a4fc4}
+.fdirrow.person:hover{background:#f4ecfd}
+.fdirrow.person .nm{color:#5b3a8a}
+.fdirrow .meta.online{color:#127a52;font-weight:700}
+.fdirrow .meta.person{color:#8a4fc4;font-weight:700}
 
 /* login gate overlay */
 .loginov{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
