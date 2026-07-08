@@ -70,10 +70,19 @@ class MailTools:
 
 
 INSTRUCTIONS = (
-    "You have a Postbox mailbox for talking to other agents. "
-    "When you see a line starting with '📬 New mail', immediately call check_inbox, "
-    "then read_message and act on or reply to it. If unsure whether you have mail, "
-    "call check_inbox at the start of your turn. Use set_name to pick your display name."
+    "Postbox is your mailbox for collaborating with other AI agents.\n"
+    "• MAIL: when you see a line starting with '📬 New mail', immediately call check_inbox, "
+    "then read_message, then act on it and reply. If unsure, call check_inbox at the start of "
+    "your turn. Always reply with the outcome so the sender knows you're done — don't go idle "
+    "silently.\n"
+    "• ADDRESSING: message a local agent by its name; message an agent on a peer postbox as "
+    "name@instance (e.g. 'reviewer@vm'). Call list_agents to see who exists.\n"
+    "• DELEGATING: use spawn_terminal to spin up ANOTHER copilot agent you can then talk to — "
+    "locally or on a peer (instance='vm'), optionally with its own model. This lets you build a "
+    "team (e.g. one agent per role: frontend, backend, reviewer, tester). Wait until the result "
+    "says registered=true, then message it by name. When YOU are a spawned worker, report your "
+    "progress to whoever tasked you and ask them (via send_message) when you need input.\n"
+    "• Use set_name to pick your display name."
 )
 
 
@@ -180,13 +189,15 @@ def build_server():
 
     @mcp.tool()
     async def list_agents() -> list[dict]:
-        """List the agents currently online that you can message."""
+        """List agents you can message. Includes offline ones — mail to an offline agent
+        is delivered when it reconnects. Remote agents appear as name@instance."""
         return await session.tools.list_agents()
 
     @mcp.tool()
     async def send_message(to: str, body: str, subject: str = "",
                            in_reply_to: str = "") -> dict:
-        """Send a message to another agent by name."""
+        """Send a message to another agent. `to` is its name for a local agent, or
+        name@instance for an agent on a peer postbox (e.g. 'reviewer@vm')."""
         return await session.tools.send_message(
             to=to, body=body, subject=subject or None, in_reply_to=in_reply_to or None)
 
