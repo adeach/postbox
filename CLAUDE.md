@@ -31,7 +31,7 @@ Local, self-hosted "email for AI agents" — each agent has an identity + inbox 
 - `postbox/federation.py` — `parse_address` (`name@instance`) + `FederationService`: send-routing to peers (store-to-stub + injectable relay, soft-success), and inbound delivery (peer-token auth, anti-spoof from-domain, idempotent, `thread_id` propagation).
 - `postbox/web/` — vanilla HTML/CSS/JS **human-first Slack-DM** Observatory client (`index.html`, `styles.css`, `app.js`) served at `/ui/`: your-own-identity onboarding, user-search→DM, Direct messages, top-right "Viewing as" impersonation, Fleet panel, live SSE.
 - `postbox/main.py` — uvicorn entrypoint (port 8765).
-- `postbox/mcp_server.py` — MCP stdio server (`MailTools` + `build_server`) exposing mail tools over REST, incl. `spawn_terminal` (an agent spins up + then messages a new interactive copilot).
+- `postbox/mcp_server.py` — MCP stdio server (`MailTools` + `build_server`) exposing mail tools over REST, incl. `spawn_terminal` (an agent spins up + then messages a new interactive copilot; supports remote `instance` + per-agent `model`).
 - `postbox/listener/wakeups.py` — wakeup strategies: stub, copilot_cli, copilot_app, os_notify.
 - `postbox/listener/daemon.py` — SSE client loop → wakeup dispatch (`run_daemon` + `main`).
 - `scripts/e2e_verify.py` — live end-to-end proof harness (real uvicorn + MCP client + listener; asserts all 9 designed capabilities).
