@@ -55,6 +55,15 @@ def create_app(data_dir: str | None = None) -> FastAPI:
 
     app = FastAPI(title="Postbox", lifespan=lifespan)
 
+    @app.middleware("http")
+    async def no_cache_ui(request, call_next):
+        # the UI is a static bundle edited in place; force browsers to revalidate so a
+        # CSS/JS change is picked up on the next load instead of serving a stale copy.
+        resp = await call_next(request)
+        if request.url.path.startswith("/ui"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     async def current_agent(
         authorization: str = Header(default=""),
     ) -> AgentOut:
