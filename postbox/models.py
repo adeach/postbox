@@ -158,6 +158,7 @@ class TerminalIn(BaseModel):
     cwd: str | None = None
     instance: str | None = None      # spawn on a peer (name@instance) instead of locally
     model: str | None = None         # per-agent model; omit to use the launcher's default
+    project: str | None = None       # tmux session to group this team under (postbox_<project>)
 
 
 class LoginIn(BaseModel):

@@ -62,9 +62,11 @@ class MailTools:
 
     async def spawn_terminal(self, name: str, cwd: str | None = None,
                              instance: str | None = None,
-                             model: str | None = None) -> dict:
+                             model: str | None = None,
+                             project: str | None = None) -> dict:
         r = await self.client.post("/spawn", headers=self.headers, json={
-            "name": name, "cwd": cwd, "instance": instance, "model": model})
+            "name": name, "cwd": cwd, "instance": instance, "model": model,
+            "project": project})
         r.raise_for_status()
         return r.json()
 
@@ -79,9 +81,11 @@ INSTRUCTIONS = (
     "name@instance (e.g. 'reviewer@vm'). Call list_agents to see who exists.\n"
     "• DELEGATING: use spawn_terminal to spin up ANOTHER copilot agent you can then talk to — "
     "locally or on a peer (instance='vm'), optionally with its own model. This lets you build a "
-    "team (e.g. one agent per role: frontend, backend, reviewer, tester). Wait until the result "
-    "says registered=true, then message it by name. When YOU are a spawned worker, report your "
-    "progress to whoever tasked you and ask them (via send_message) when you need input.\n"
+    "team (e.g. one agent per role: frontend, backend, reviewer, tester). Pass the SAME "
+    "project='<task>' for every teammate so the whole team shares one tmux session. Wait until "
+    "the result says registered=true, then message it by name. When YOU are a spawned worker, "
+    "report your progress to whoever tasked you and ask them (via send_message) when you need "
+    "input.\n"
     "• Use set_name to pick your display name."
 )
 
@@ -218,15 +222,18 @@ def build_server():
 
     @mcp.tool()
     async def spawn_terminal(name: str, cwd: str = "", instance: str = "",
-                             model: str = "") -> dict:
-        """Spin up a NEW interactive copilot agent (in its own tmux session) that you can
-        then talk to. `instance`: empty = spawn locally, or a peer name (e.g. "vm") to
-        spawn on that peer (then message it at name@instance). `model`: set a specific
-        model for this agent (e.g. "claude-opus-4.8" or "gpt-5.4") — pass your OWN model
-        to have it inherit yours; leave empty for the default. Returns {name, session,
-        attach, registered, address?}: message it once `registered` is true."""
+                             model: str = "", project: str = "") -> dict:
+        """Spin up a NEW interactive copilot agent (a window in a tmux session) that you
+        can then talk to. `project`: groups a team into ONE tmux session `postbox_<project>`
+        (one window per agent) — pass the SAME project for every teammate on a task so they
+        live together (attach the whole team with `tmux attach -t postbox_<project>`);
+        empty = the shared 'main' session. `instance`: empty = spawn locally, or a peer name
+        (e.g. "vm") to spawn on that peer (then message it at name@instance). `model`: set a
+        specific model (e.g. "claude-opus-4.8") — pass your OWN model to have it inherit
+        yours; empty = default. Returns {name, session, project, window, attach, registered,
+        address?}: message it once `registered` is true."""
         return await session.tools.spawn_terminal(
-            name, cwd or None, instance or None, model or None)
+            name, cwd or None, instance or None, model or None, project or None)
 
     # A durable/fleet identity (token provided) must NOT rename itself — its address
     # is a fixed, referenced key. Only expose set_name for self-registering sessions.

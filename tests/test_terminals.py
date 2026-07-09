@@ -35,25 +35,42 @@ async def test_spawn_builds_injection_safe_tmux_argv(db):
     r = FakeRunner()
     svc = _svc(db, r)
     res = await svc.spawn("alice")
-    assert res == {"name": "alice", "session": "postbox", "window": "alice",
-                   "attach": "tmux attach -t postbox \\; select-window -t alice"}
-    # first agent CREATES the shared session with its window; argv is an exec list (no shell):
+    assert res == {"name": "alice", "session": "postbox_main", "project": "main",
+                   "window": "alice",
+                   "attach": "tmux attach -t postbox_main \\; select-window -t alice"}
+    # first agent of a project CREATES its session with its window; argv is an exec list (no shell):
     # tmux → detached named session → env-set vars → copilot with ALL perms pre-approved
     assert r.calls[-1] == [
-        "tmux", "new-session", "-d", "-s", "postbox", "-n", "alice",
+        "tmux", "new-session", "-d", "-s", "postbox_main", "-n", "alice",
         "env", "POSTBOX_NAME=alice", "POSTBOX_URL=http://127.0.0.1:8765",
         "copilot", "--allow-all", "--allow-all-mcp-server-instructions"]
 
 
-async def test_second_agent_is_a_window_in_shared_session(db):
-    r = FakeRunner(has_session=True)          # the shared session already exists
-    res = await _svc(db, r).spawn("beta")
-    assert res["session"] == "postbox" and res["window"] == "beta"
-    # next agents are ADDED as a window, not a new session
+async def test_teammate_is_a_window_in_project_session(db):
+    r = FakeRunner(has_session=True)          # the project session already exists
+    res = await _svc(db, r).spawn("beta", project="authfeat")
+    assert res["session"] == "postbox_authfeat" and res["project"] == "authfeat"
+    assert res["window"] == "beta"
+    # next teammates are ADDED as a window in the SAME project session, not a new session
     assert r.calls[-1] == [
-        "tmux", "new-window", "-t", "postbox", "-n", "beta",
+        "tmux", "new-window", "-t", "postbox_authfeat", "-n", "beta",
         "env", "POSTBOX_NAME=beta", "POSTBOX_URL=http://127.0.0.1:8765",
         "copilot", "--allow-all", "--allow-all-mcp-server-instructions"]
+
+
+async def test_first_agent_of_project_creates_named_session(db):
+    r = FakeRunner()                          # no session yet
+    res = await _svc(db, r).spawn("lead", project="myproj")
+    assert res["session"] == "postbox_myproj"
+    assert r.calls[-1][:6] == ["tmux", "new-session", "-d", "-s", "postbox_myproj", "-n"]
+
+
+@pytest.mark.parametrize("bad", ["has space", "dot.name", "colon:x", "a" * 41, "semi;rm"])
+async def test_spawn_rejects_bad_project(db, bad):
+    r = FakeRunner()
+    with pytest.raises(ValueError):
+        await _svc(db, r).spawn("worker", project=bad)
+    assert r.calls == []
 
 
 async def test_spawn_default_runs_autonomously(db):
@@ -119,12 +136,16 @@ async def test_spawn_surfaces_tmux_failure(db):
         await _svc(db, r).spawn("alice")
 
 
-async def test_list_windows_in_shared_session(db):
-    r = FakeRunner(out="bob\nalice\nreviewer\n")   # window names in the shared session
+async def test_list_windows_grouped_by_project(db):
+    # `tmux list-windows -a` output: "<session> <window>" per line, across all sessions
+    r = FakeRunner(out="postbox_main bob\npostbox_main alice\npostbox_authfeat reviewer\nother-sess x\n")
     got = await _svc(db, r).list_terminals()
-    assert [t["name"] for t in got] == ["alice", "bob", "reviewer"]     # sorted
-    assert got[0]["session"] == "postbox" and got[0]["window"] == "alice"
-    assert got[0]["attach"] == "tmux attach -t postbox \\; select-window -t alice"
+    # only postbox_* windows, sorted by (project, window); 'other-sess' filtered out
+    assert [(t["project"], t["name"]) for t in got] == [
+        ("authfeat", "reviewer"), ("main", "alice"), ("main", "bob")]
+    rev = got[0]
+    assert rev["session"] == "postbox_authfeat"
+    assert rev["attach"] == "tmux attach -t postbox_authfeat \\; select-window -t reviewer"
 
 
 async def test_list_empty_when_no_tmux_server(db):
@@ -132,13 +153,20 @@ async def test_list_empty_when_no_tmux_server(db):
     assert await _svc(db, r).list_terminals() == []
 
 
-async def test_kill_builds_argv_and_validates(db):
-    r = FakeRunner()
+async def test_kill_finds_window_across_projects_and_validates(db):
+    # kill scans `list-windows -a` to find which project session holds the window
+    r = FakeRunner(out="postbox_authfeat alice\npostbox_main bob\n")
     svc = _svc(db, r)
     await svc.kill("alice")
-    assert r.calls[0] == ["tmux", "kill-window", "-t", "postbox:alice"]
+    assert r.calls[-1] == ["tmux", "kill-window", "-t", "postbox_authfeat:alice"]
     with pytest.raises(ValueError):
         await svc.kill("bad name")
+
+
+async def test_kill_unknown_window_raises(db):
+    r = FakeRunner(out="postbox_main bob\n")
+    with pytest.raises(RuntimeError):
+        await _svc(db, r).kill("ghost")             # no such window anywhere
 
 
 async def test_spawn_endpoint_is_bearer_authed(tmp_path):
@@ -158,9 +186,13 @@ async def test_spawn_endpoint_is_bearer_authed(tmp_path):
             r = await c.post("/spawn", headers=h, json={"name": "helper"})
             assert r.status_code == 201
             d = r.json()
-            assert d["session"] == "postbox" and d["window"] == "helper"
-            assert d["attach"] == "tmux attach -t postbox \\; select-window -t helper"
+            assert d["session"] == "postbox_main" and d["window"] == "helper"
+            assert d["attach"] == "tmux attach -t postbox_main \\; select-window -t helper"
             assert d["registered"] is False          # no real copilot registered it
+            # project groups the team: session name is postbox_<project>
+            rp = await c.post("/spawn", headers=h, json={"name": "helper3", "project": "feat"})
+            assert rp.status_code == 201
+            assert rp.json()["session"] == "postbox_feat" and rp.json()["project"] == "feat"
             # no bearer token → 401 (not open like the observer UI route)
             assert (await c.post("/spawn", json={"name": "helper2"})).status_code == 401
             # collision with the caller's own name → 409
@@ -189,7 +221,7 @@ async def test_federation_spawn_endpoint_peer_token_gated(tmp_path):
                              headers={"X-Postbox-Peer-Token": "peer-tok"},
                              json={"name": "helper"})
             assert r.status_code == 201
-            assert r.json()["session"] == "postbox" and r.json()["window"] == "helper"
+            assert r.json()["session"] == "postbox_main" and r.json()["window"] == "helper"
 
 
 async def test_spawn_endpoint_routes_remote_instance_to_federation(tmp_path):

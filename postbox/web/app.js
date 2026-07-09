@@ -276,11 +276,12 @@ function openFleet(){
     </div>
     <div class="faddbar term">
       <input id="tName" placeholder="terminal agent name (e.g. alice)" autocomplete="off">
+      <input id="tProject" placeholder="project (groups the team)" autocomplete="off">
       <select id="tInstance" title="Where to spawn"><option value="">on this box</option></select>
       <input id="tModel" placeholder="model (optional)" autocomplete="off">
       <input id="tCwd" placeholder="cwd (optional)" autocomplete="off">
       <button data-act="termspawn" class="fbtn primary">Spin up terminal</button>
-      <span class="fhint">interactive copilot in tmux — attach from its host's terminal</span>
+      <span class="fhint">interactive copilot in tmux — same project = one shared session (attach from its host)</span>
     </div>
     <div id="fleetList"></div></div>`;
   refreshFleet(true);
@@ -352,15 +353,25 @@ async function refreshFleet(force){
   const namedAgents   = AGENTS.filter(a=>!isUnnamed(a)).sort(byOnlineThenName);
   const unnamedAgents = AGENTS.filter(a=> isUnnamed(a)).sort(byOnlineThenName);
   const dirBlock = arr => arr.map(dirRow).join("") || `<div class="fnote">None.</div>`;
-  // interactive terminal agents (tmux sessions you attach to)
-  const termRows = terms.map(t=>
+  // interactive terminal agents, grouped by PROJECT (each project = one tmux session)
+  const termByProject = {};
+  terms.forEach(t=>{ (termByProject[t.project||"main"] ||= []).push(t); });
+  const projNames = Object.keys(termByProject).sort();
+  const termRow = t =>
     `<div class="fdirrow"><span class="fdot" style="background:#3d9be0"></span>`
     + `<span class="nm">${esc(t.name)}</span>`
-    + `<button class="sidchip" data-act="copytext" data-val="${esc(t.attach)}" title="Copy — run this in a terminal to attach">${esc(t.attach)}</button>`
+    + `<button class="sidchip" data-act="copytext" data-val="${esc(t.attach)}" title="Copy — attach to this agent's window">${esc(t.attach)}</button>`
     + `<span class="meta">tmux</span>`
     + `<button class="fchat" data-act="dm" data-val="${esc(t.name)}" title="Message ${esc(t.name)}">💬 Chat</button>`
-    + `<button class="fx" data-act="termkill" data-val="${esc(t.name)}" title="Kill this terminal session (its identity/messages stay)">✕</button></div>`
-  ).join("") || `<div class="fnote">No terminal agents running — spin one up above, then attach with the tmux command it gives you.</div>`;
+    + `<button class="fx" data-act="termkill" data-val="${esc(t.name)}" title="Kill this agent's window (its identity + messages stay)">✕</button></div>`;
+  const termBlock = projNames.length
+    ? projNames.map(p=>{
+        const sess = termByProject[p][0].session;
+        return `<div class="fsub">📁 ${esc(p)} <span class="fgc">${termByProject[p].length} agent${termByProject[p].length===1?"":"s"}</span>`
+          + `<button class="sidchip" data-act="copytext" data-val="tmux attach -t ${esc(sess)}" title="Attach to the whole ${esc(p)} team session">tmux attach -t ${esc(sess)}</button></div>`
+          + `<div class="fdir">${termByProject[p].map(termRow).join("")}</div>`;
+      }).join("")
+    : `<div class="fnote">No terminal agents running — spin one up above (same project = one shared session).</div>`;
   // federation peers + their live reachability (this is the "target postbox health")
   const peerRows = peers.map(p=>
     `<div class="fdirrow"><span class="fdot" style="background:${p.reachable?"#17a673":"#e01e5a"}"></span>`
@@ -370,7 +381,7 @@ async function refreshFleet(force){
   ).join("") || `<div class="fnote">No peers configured — add them in ~/.postbox/config.yaml to federate.</div>`;
   host.innerHTML = `<div class="fgrp">Peers <span class="fgc">${peers.length} federated postbox${peers.length===1?"":"es"}</span></div><div class="fdir">${peerRows}</div>`
     + `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
-    + `<div class="fgrp">Terminal agents <span class="fgc">${terms.length} interactive</span></div><div class="fdir">${termRows}</div>`
+    + `<div class="fgrp">Terminal agents <span class="fgc">${terms.length} in ${projNames.length} project${projNames.length===1?"":"s"}</span></div>${termBlock}`
     + `<div class="fgrp">Named agents <span class="fgc">${namedAgents.length} identit${namedAgents.length===1?"y":"ies"} · ${onlineCount(namedAgents)} online</span></div><div class="fdir">${dirBlock(namedAgents)}</div>`
     + `<div class="fgrp">Unnamed agents <span class="fgc">${unnamedAgents.length} on auto <code>copilot-…</code> handles · ${onlineCount(unnamedAgents)} online</span></div><div class="fdir">${dirBlock(unnamedAgents)}</div>`;
 }
@@ -426,10 +437,11 @@ async function spawnTerminal(){
   const cwd = $("tCwd").value.trim() || null;
   const instance = $("tInstance").value || null;
   const model = $("tModel").value.trim() || null;
+  const project = $("tProject").value.trim() || null;
   fleetPausedUntil = Date.now() + 1500;
   try{
     const res = await j("/terminals", {method:"POST", headers:{'content-type':'application/json'},
-      body: JSON.stringify({name, cwd, instance, model})});
+      body: JSON.stringify({name, cwd, instance, model, project})});
     $("tName").value=""; $("tCwd").value=""; $("tModel").value="";
     await refreshFleet(true);
     const where = res.address ? `on ${instance} (message it at ${res.address})` : "on this box";

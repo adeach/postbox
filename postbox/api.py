@@ -219,14 +219,15 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         if payload.instance and payload.instance != settings.instance:
             try:
                 return await app.state.federation.spawn_remote(
-                    payload.name, payload.cwd, payload.instance, payload.model)
+                    payload.name, payload.cwd, payload.instance, payload.model,
+                    payload.project)
             except ValueError as e:
                 raise HTTPException(404, str(e))
             except Exception as e:
                 raise HTTPException(502, f"remote spawn failed: {e}")
         try:
             return await app.state.terminals.spawn(
-                payload.name, payload.cwd, payload.model)
+                payload.name, payload.cwd, payload.model, payload.project)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:
@@ -256,13 +257,15 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         if payload.instance and payload.instance != settings.instance:
             try:
                 return await app.state.federation.spawn_remote(
-                    payload.name, payload.cwd, payload.instance, payload.model)
+                    payload.name, payload.cwd, payload.instance, payload.model,
+                    payload.project)
             except ValueError as e:
                 raise HTTPException(404, str(e))
             except Exception as e:
                 raise HTTPException(502, f"remote spawn failed: {e}")
         try:
-            res = await app.state.terminals.spawn(payload.name, payload.cwd, payload.model)
+            res = await app.state.terminals.spawn(payload.name, payload.cwd,
+                                                  payload.model, payload.project)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:
@@ -279,7 +282,8 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         if await app.state.federation.peer_by_token(x_postbox_peer_token) is None:
             raise HTTPException(401, "unknown peer token")
         try:
-            res = await app.state.terminals.spawn(payload.name, payload.cwd, payload.model)
+            res = await app.state.terminals.spawn(payload.name, payload.cwd,
+                                                  payload.model, payload.project)
         except ValueError as e:
             raise HTTPException(409, str(e))
         except RuntimeError as e:

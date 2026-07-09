@@ -59,7 +59,7 @@ class FederationService:
         return None
 
     async def spawn_remote(self, name: str, cwd: str | None, peer_name: str,
-                           model: str | None = None) -> dict:
+                           model: str | None = None, project: str | None = None) -> dict:
         """Ask a peer to spin up an interactive copilot on ITS host; the spawned agent
         registers on the peer and is addressed as name@peer (existing federation carries
         the chat). Spawn is not soft-success — surface peer errors to the caller."""
@@ -67,7 +67,8 @@ class FederationService:
         if peer is None:
             raise ValueError(f"unknown peer: {peer_name}")
         result = await self.spawn_relay(peer["url"], peer["token"],
-                                        {"name": name, "cwd": cwd, "model": model})
+                                        {"name": name, "cwd": cwd, "model": model,
+                                         "project": project})
         result["address"] = f"{name}@{peer_name}"
         result["instance"] = peer_name
         return result
