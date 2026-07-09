@@ -12,6 +12,16 @@ async def client(tmp_path):
             yield c
 
 
+async def test_health_reports_version_and_instance(client):
+    from postbox import __version__
+    r = await client.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["version"] == __version__      # single source of truth: postbox.__version__
+    assert "instance" in body
+
+
 async def test_peers_crud_over_http_and_redacts_token(client):
     r = await client.post("/peers", json={
         "name": "east",

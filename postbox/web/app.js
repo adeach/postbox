@@ -298,6 +298,8 @@ async function refreshFleet(force){
   try{ terms = await j("/terminals"); }catch(e){ terms = []; }
   let peers = [];
   try{ peers = await j("/peers/health"); }catch(e){ peers = []; }
+  let me_health = {};
+  try{ me_health = await j("/health"); }catch(e){ me_health = {}; }
   // populate the "where to spawn" dropdown: this box + each reachable peer
   const sel = $("tInstance");
   if(sel){
@@ -306,7 +308,7 @@ async function refreshFleet(force){
       + peers.map(p=>`<option value="${esc(p.name)}"${p.reachable?"":" disabled"}>on ${esc(p.name)}${p.reachable?"":" (unreachable)"}</option>`).join("");
     sel.value = cur;
   }
-  const sig = JSON.stringify([list, terms, peers, AGENTS.map(a=>[a.address, a.status])]);
+  const sig = JSON.stringify([list, terms, peers, me_health, AGENTS.map(a=>[a.address, a.status])]);
   if(!force && sig === fleetSig) return;                  // unchanged → keep buttons live
   fleetSig = sig;
   const inFleet = new Set(list.map(a=>a.address));
@@ -373,13 +375,22 @@ async function refreshFleet(force){
       }).join("")
     : `<div class="fnote">No terminal agents running — spin one up above (same project = one shared session).</div>`;
   // federation peers + their live reachability (this is the "target postbox health")
-  const peerRows = peers.map(p=>
-    `<div class="fdirrow"><span class="fdot" style="background:${p.reachable?"#17a673":"#e01e5a"}"></span>`
+  const myVer = me_health.version, myInst = me_health.instance;
+  const selfRow = `<div class="fdirrow online"><span class="fdot" style="background:#17a673"></span>`
+    + `<span class="nm">${esc(myInst||"this box")}</span>`
+    + `<span class="sidchip">this postbox</span>`
+    + `<span class="meta online">${myVer?`v${esc(myVer)}`:"version n/a"}</span></div>`;
+  const peerRows = peers.map(p=>{
+    // flag a peer running a different build than us — that's the drift you want to catch
+    const mism = p.reachable && p.version && myVer && p.version !== myVer;
+    const ver = p.reachable ? (p.version ? `v${esc(p.version)}${mism?" ⚠":""}` : "version n/a") : "";
+    return `<div class="fdirrow${mism?" offline":""}"><span class="fdot" style="background:${p.reachable?(mism?"#e08a1e":"#17a673"):"#e01e5a"}"></span>`
     + `<span class="nm">${esc(p.name)}</span>`
     + `<span class="sidchip">${esc(p.url)}</span>`
-    + `<span class="meta">${p.reachable?`reachable${p.instance?` · ${esc(p.instance)}`:""}`:"unreachable"}</span></div>`
-  ).join("") || `<div class="fnote">No peers configured — add them in ~/.postbox/config.yaml to federate.</div>`;
-  host.innerHTML = `<div class="fgrp">Peers <span class="fgc">${peers.length} federated postbox${peers.length===1?"":"es"}</span></div><div class="fdir">${peerRows}</div>`
+    + `<span class="meta">${p.reachable?`reachable${p.instance?` · ${esc(p.instance)}`:""}${ver?` · ${ver}`:""}`:"unreachable"}</span></div>`;
+  }).join("");
+  const peerBlock = selfRow + peerRows;
+  host.innerHTML = `<div class="fgrp">Peers <span class="fgc">this box + ${peers.length} federated postbox${peers.length===1?"":"es"}</span></div><div class="fdir">${peerBlock}</div>`
     + `<div class="fgrp">Fleet agents <span class="fgc">${list.length} spawned on new mail</span></div>${rows}`
     + `<div class="fgrp">Terminal agents <span class="fgc">${terms.length} in ${projNames.length} project${projNames.length===1?"":"s"}</span></div>${termBlock}`
     + `<div class="fgrp">Named agents <span class="fgc">${namedAgents.length} identit${namedAgents.length===1?"y":"ies"} · ${onlineCount(namedAgents)} online</span></div><div class="fdir">${dirBlock(namedAgents)}</div>`

@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
 import hmac
+from postbox import __version__
 from postbox.agents import AgentService
 from postbox.auth import make_session_cookie, valid_session_cookie
 from postbox.db import Database
@@ -331,28 +332,30 @@ def create_app(data_dir: str | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health():
-        # cheap, unauthenticated liveness probe — also lets a peer read our instance name.
-        return {"ok": True, "instance": settings.instance}
+        # cheap, unauthenticated liveness probe — also lets a peer read our instance + version
+        # (compare this across laptop/VM to confirm they run the same build).
+        return {"ok": True, "instance": settings.instance, "version": __version__}
 
     @app.get("/peers/health", dependencies=[Depends(require_observer)])
     async def peers_health():
         # ping each configured peer so the UI can show the federation link status. Any HTTP
         # response means the peer's postbox is UP (even a 404 from an older build without
-        # /health); only a network error counts as unreachable. Read its instance if given.
+        # /health); only a network error counts as unreachable. Read its instance + version.
         import httpx
         out = []
         for p in await app.state.peers.list_peers():
-            reachable, inst = False, None
+            reachable, inst, ver = False, None, None
             try:
                 async with httpx.AsyncClient(timeout=3) as c:
                     r = await c.get(f"{p['url']}/health")
                     reachable = True
                     if r.status_code == 200:
                         inst = r.json().get("instance")
+                        ver = r.json().get("version")
             except Exception:
                 pass
-            out.append({"name": p["name"], "url": p["url"],
-                        "reachable": reachable, "instance": inst})
+            out.append({"name": p["name"], "url": p["url"], "reachable": reachable,
+                        "instance": inst, "version": ver})
         return out
 
     @app.post("/federation/inbound", status_code=201)

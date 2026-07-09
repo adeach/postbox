@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "postbox"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local email-for-AI-agents messaging platform"
 requires-python = ">=3.11"
 dependencies = [
@@ -27,3 +27,6 @@ asyncio_mode = "auto"
 
 [tool.setuptools.packages.find]
 include = ["postbox*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "postbox.__version__"}
