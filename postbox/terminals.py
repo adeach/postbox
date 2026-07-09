@@ -24,12 +24,13 @@ class TerminalService:
         self.s = settings
         self.agents = agents
         self._run = runner or self._run_tmux
-        # ponytail: --allow-all-tools = spawned workers run shell/build/git/restart unattended
-        # (the whole point: autonomous agents that survive a laptop close). Scope down via the
-        # terminal_cmd config if you don't want that breadth. --allow-all-mcp-server-instructions
-        # delivers the postbox collaboration instructions into the worker's system prompt.
+        # ponytail: --allow-all = spawned workers run FULLY unattended — tools + file paths + urls.
+        # --allow-all-tools alone still stalls on copilot's "Allow directory access" prompt the first
+        # time a worker touches a path outside its cwd (e.g. /tmp, another repo), which is invisible
+        # to the parent and kills long-running tasks. Scope down via terminal_cmd config if you want
+        # narrower. --allow-all-mcp-server-instructions delivers the postbox collab instructions.
         self.program = list(program) if program else [
-            "copilot", "--allow-all-tools", "--allow-all-mcp-server-instructions"]
+            "copilot", "--allow-all", "--allow-all-mcp-server-instructions"]
         self.spawn_wait = 25.0        # seconds to wait for a spawned agent to register
 
     async def _run_tmux(self, argv: list[str]) -> tuple[int, str]:

@@ -33,17 +33,17 @@ async def test_spawn_builds_injection_safe_tmux_argv(db):
     assert res == {"name": "alice", "session": "postbox_alice",
                    "attach": "tmux attach -t postbox_alice"}
     # argv is an exec list (no shell): tmux → detached named session → env-set vars →
-    # copilot with all tools pre-approved (so the spawned agent runs autonomously, never prompts)
+    # copilot with ALL permissions pre-approved (tools+paths+urls) so the worker never prompts
     assert r.calls[0] == [
         "tmux", "new-session", "-d", "-s", "postbox_alice",
         "env", "POSTBOX_NAME=alice", "POSTBOX_URL=http://127.0.0.1:8765",
-        "copilot", "--allow-all-tools", "--allow-all-mcp-server-instructions"]
+        "copilot", "--allow-all", "--allow-all-mcp-server-instructions"]
 
 
 async def test_spawn_default_runs_autonomously(db):
     r = FakeRunner()
     await _svc(db, r).spawn("alice")
-    assert "--allow-all-tools" in r.calls[0]     # no permission prompt: worker acts unattended
+    assert "--allow-all" in r.calls[0]     # tools+paths+urls: no prompt, worker acts unattended
 
 
 async def test_spawn_with_cwd_adds_c_flag(db, tmp_path):
@@ -211,7 +211,7 @@ async def test_spawn_with_model_inserts_model_flag(db):
     # `--model X` sits right after the copilot binary, before its other flags
     i = argv.index("copilot")
     assert argv[i:i+3] == ["copilot", "--model", "claude-opus-4.8"]
-    assert "--allow-all-tools" in argv
+    assert "--allow-all" in argv
 
 
 async def test_spawn_without_model_has_no_model_flag(db):

@@ -8,7 +8,7 @@ Mutagen syncs `main` → VM `~/mutagen/messaging` (in sync).
 ## Shipped this session (on main)
 - Resumable identities: session_key (COPILOT_AGENT_SESSION_ID) reattach; persist on exit.
 - UI Forget (soft) + session-id chip; 💬 Chat button on agent/terminal rows.
-- Terminal agents: spin up interactive copilot in tmux (postbox_<name>), --allow-all-tools + --allow-all-mcp-server-instructions (autonomous, no prompts, gets postbox collab instructions), UI + /terminals + Bearer /spawn.
+- Terminal agents: spin up interactive copilot in tmux (postbox_<name>), --allow-all + --allow-all-mcp-server-instructions (autonomous, no prompts, gets postbox collab instructions), UI + /terminals + Bearer /spawn.
 - spawn_terminal MCP tool (agent spawns + chats another copilot), waits for registration.
 - All-conversations read-only watch view.
 - Cross-instance remote spawn: spawn_terminal(instance=peer) -> /federation/spawn (peer-token), addressable name@peer. terminal_cmd + spawn_wait config.
