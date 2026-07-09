@@ -7,7 +7,8 @@ import time
 # verbatim as the POSTBOX_NAME. Validated at the trust boundary (this spawns processes).
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 MODEL_RE = re.compile(r"^[A-Za-z0-9._-]{1,60}$")
-PREFIX = "postbox_"
+SESSION = "postbox"     # ONE tmux session per host; each spawned agent is a WINDOW in it, so a
+                        # whole team lives under `tmux attach -t postbox` instead of N sessions.
 
 
 class TerminalService:
@@ -40,8 +41,12 @@ class TerminalService:
         out, _ = await proc.communicate()
         return proc.returncode, out.decode(errors="replace")
 
-    def _attach_cmd(self, session: str) -> str:
-        return f"tmux attach -t {session}"
+    def _attach_cmd(self, window: str) -> str:
+        # attach to the shared session and focus this agent's window
+        return f"tmux attach -t {SESSION} \\; select-window -t {window}"
+
+    async def _session_exists(self) -> bool:
+        return (await self._run(["tmux", "has-session", "-t", SESSION]))[0] == 0
 
     async def spawn(self, name: str, cwd: str | None = None,
                     model: str | None = None) -> dict:
@@ -59,7 +64,7 @@ class TerminalService:
                 f"'{name}' is already taken — pick another name "
                 "(a forgotten or offline agent still reserves its name)")
 
-        session = PREFIX + name
+        session = SESSION
         # point the spawned copilot's MCP back at THIS server (so it registers here
         # regardless of the global mcp-config), and pre-name it. `env` sets the vars as
         # an arg-list (no shell) → injection-safe and portable across tmux versions.
@@ -69,30 +74,37 @@ class TerminalService:
         program = list(self.program)
         if model:
             program = [program[0], "--model", model, *program[1:]]
-        argv = ["tmux", "new-session", "-d", "-s", session]
+        # one shared session per host: the FIRST agent creates it, the rest are added as
+        # windows — so a whole team is `tmux attach -t postbox` + switch windows, not N sessions.
+        if await self._session_exists():
+            argv = ["tmux", "new-window", "-t", session, "-n", name]
+        else:
+            argv = ["tmux", "new-session", "-d", "-s", session, "-n", name]
         if cwd:
             argv += ["-c", cwd]
         argv += ["env", f"POSTBOX_NAME={name}", f"POSTBOX_URL={url}", *program]
         rc, out = await self._run(argv)
         if rc != 0:
-            raise RuntimeError(f"tmux failed to start the session: {out.strip() or rc}")
-        return {"name": name, "session": session, "attach": self._attach_cmd(session)}
+            raise RuntimeError(f"tmux failed to start the agent window: {out.strip() or rc}")
+        return {"name": name, "session": session, "window": name,
+                "attach": self._attach_cmd(name)}
 
     async def list_terminals(self) -> list[dict]:
+        # windows in the shared session ARE the agents (the session is the namespace)
         rc, out = await self._run(
-            ["tmux", "list-sessions", "-F", "#{session_name}"])
-        if rc != 0:      # no tmux server running yet, or no sessions → none
+            ["tmux", "list-windows", "-t", SESSION, "-F", "#{window_name}"])
+        if rc != 0:      # the shared session doesn't exist yet → none
             return []
-        names = [ln[len(PREFIX):] for ln in out.splitlines() if ln.startswith(PREFIX)]
-        return [{"name": n, "session": PREFIX + n,
-                 "attach": self._attach_cmd(PREFIX + n)} for n in sorted(names)]
+        names = [ln for ln in out.splitlines() if ln.strip()]
+        return [{"name": n, "session": SESSION, "window": n,
+                 "attach": self._attach_cmd(n)} for n in sorted(names)]
 
     async def kill(self, name: str) -> None:
         if not NAME_RE.match(name or ""):
             raise ValueError("bad terminal name")
-        rc, out = await self._run(["tmux", "kill-session", "-t", PREFIX + name])
+        rc, out = await self._run(["tmux", "kill-window", "-t", f"{SESSION}:{name}"])
         if rc != 0:
-            raise RuntimeError(f"tmux kill-session failed: {out.strip() or rc}")
+            raise RuntimeError(f"tmux kill-window failed: {out.strip() or rc}")
 
     async def wait_registered(self, name: str, timeout: float | None = None) -> bool:
         """Poll until the freshly-spawned copilot has registered its identity (so the
