@@ -107,7 +107,9 @@ class Session:
         self._durable = token is not None      # provided token → don't register/deregister
         self.session_key = session_key         # COPILOT_AGENT_SESSION_ID → resumable identity
         self.tools: MailTools | None = MailTools(client, token) if token else None
-        self._task: asyncio.Task | None = None
+        self._tasks: list[asyncio.Task] = []
+        self._waker = None
+        self._poke_lock: asyncio.Lock | None = None
 
     async def start(self) -> None:
         if not self._durable:
@@ -121,7 +123,18 @@ class Session:
             r.raise_for_status()
             self.token = r.json()["token"]
             self.tools = MailTools(self.client, self.token)
-        self._task = asyncio.create_task(self._wakeup_loop())
+        self._waker = self._build_wakeup()
+        self._poke_lock = asyncio.Lock()
+        self._tasks = [asyncio.create_task(self._wakeup_loop())]
+        # defense-in-depth watchdog: a periodic self-check that re-pokes if mail stays
+        # unread (catches any wake the SSE path ever drops). Only for tmux-poked agents.
+        if self.pane and float(os.environ.get("POSTBOX_SAFETY_POLL", "45")) > 0:
+            self._tasks.append(asyncio.create_task(self._safety_loop()))
+
+    async def _poke(self, event: dict) -> None:
+        # serialize pokes so the SSE loop and the watchdog never type into the pane at once
+        async with self._poke_lock:
+            await self._waker.wake(event)
 
     def _build_wakeup(self):
         if not self.pane:
@@ -134,7 +147,6 @@ class Session:
 
     async def _wakeup_loop(self) -> None:
         import json as _json
-        waker = self._build_wakeup()
         # Track the last seen event id so a reconnect resumes from there instead
         # of replaying (and re-poking) the whole history. A fresh session starts
         # at 0 (empty inbox), so no spurious pokes on first connect either.
@@ -148,17 +160,45 @@ class Session:
                     async for sse in es.aiter_sse():
                         last_id = sse.id or last_id
                         if sse.event == "message.received":
-                            await waker.wake(_json.loads(sse.data))
+                            await self._poke(_json.loads(sse.data))
             except asyncio.CancelledError:
                 raise
             except Exception:
                 await asyncio.sleep(1)
 
+    async def _safety_loop(self) -> None:
+        """Watchdog: if mail stays unread across a full poll interval, the SSE wake was
+        dropped (reconnect gap, missed event, …) — re-poke. Requiring the message to
+        persist one interval means the normal SSE wake handles fresh mail first, so this
+        only fires on genuinely stuck mail, not every new message."""
+        interval = float(os.environ.get("POSTBOX_SAFETY_POLL", "45"))
+        prev_unread: set[str] = set()
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                r = await self.client.get(
+                    "/inbox", params={"unread": "true"},
+                    headers={"Authorization": f"Bearer {self.token}"})
+                msgs = r.json() if r.status_code == 200 else []
+                by_id = {m["id"]: m for m in msgs}
+                stuck = set(by_id) & prev_unread          # unread for a whole interval
+                if stuck:
+                    m = by_id[next(iter(stuck))]
+                    await self._poke({"from": m.get("sender") or m.get("from"),
+                                      "subject": m.get("subject"),
+                                      "message_id": m["id"]})
+                prev_unread = set(by_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+
     async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
+        for t in self._tasks:
+            t.cancel()
+        for t in self._tasks:
             with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+                await t
         # A resumable identity (has a session_key) must PERSIST on exit so it stays
         # listed (offline) and can be resumed later — presence drops automatically when
         # the SSE connection closes. Only a non-resumable ephemeral session is deregistered.

@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import signal
 import time
 
 # tmux session/window names can't contain '.' or ':'; keep names tight and also safe to reuse
@@ -124,12 +125,40 @@ class TerminalService:
         for proj, win in await self._all_windows():
             if win == name:
                 session = PREFIX + proj
-                rc, out = await self._run(
-                    ["tmux", "kill-window", "-t", f"{session}:{name}"])
+                target = f"{session}:{name}"
+                pane_pid = await self._pane_pid(target)     # capture BEFORE the window is gone
+                rc, out = await self._run(["tmux", "kill-window", "-t", target])
                 if rc != 0:
                     raise RuntimeError(f"tmux kill-window failed: {out.strip() or rc}")
+                await self._reap(pane_pid)                   # force-kill a hung survivor
                 return
         raise RuntimeError(f"no terminal window named '{name}' found")
+
+    async def _pane_pid(self, target: str) -> str | None:
+        rc, out = await self._run(
+            ["tmux", "list-panes", "-t", target, "-F", "#{pane_pid}"])
+        lines = [l for l in out.splitlines() if l.strip()] if rc == 0 else []
+        return lines[0].strip() if lines else None
+
+    async def _reap(self, pid: str | None) -> None:
+        """kill-window SIGHUPs the pane's process, which reaps a healthy copilot. But a
+        HUNG copilot can ignore SIGHUP and leak. Give it a moment, then SIGKILL if it's
+        still alive. No-op in the normal case (the process is already gone)."""
+        if not pid:
+            return
+        try:
+            target = int(pid)
+        except (TypeError, ValueError):
+            return
+        await asyncio.sleep(0.5)
+        try:
+            os.kill(target, 0)          # alive? (raises if already reaped → normal path)
+        except OSError:
+            return
+        try:
+            os.kill(target, signal.SIGKILL)
+        except OSError:
+            pass
 
     async def wait_registered(self, name: str, timeout: float | None = None) -> bool:
         """Poll until the freshly-spawned copilot has registered its identity (so the

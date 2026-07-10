@@ -38,8 +38,64 @@ async def test_reply_threads_and_routes_back(tools):
 
 
 import asyncio
+import contextlib
 import uvicorn
 from postbox.mcp_server import Session
+
+
+async def test_safety_loop_repokes_persistently_unread(monkeypatch):
+    """Watchdog: mail that stays unread across a full poll interval gets re-poked
+    (recovers a dropped SSE wake); fresh mail seen only once is NOT re-poked."""
+    monkeypatch.setenv("POSTBOX_SAFETY_POLL", "0.05")
+
+    class FakeResp:
+        status_code = 200
+        def json(self): return [{"id": "m1", "sender": "x", "subject": "s"}]
+
+    class FakeClient:
+        async def get(self, *a, **k): return FakeResp()
+
+    s = Session(client=FakeClient(), pane="%1", desired_name="w")
+    s.token = "tok"
+    poked = []
+    async def fake_poke(ev): poked.append(ev)
+    s._poke = fake_poke
+    t = asyncio.create_task(s._safety_loop())
+    await asyncio.sleep(0.25)                       # several poll intervals
+    t.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await t
+    assert poked and poked[0]["message_id"] == "m1"    # stuck unread → re-poked
+
+
+async def test_safety_loop_ignores_transient_unread(monkeypatch):
+    """A message seen unread on only ONE poll (about to be handled by the SSE wake) is
+    not re-poked — avoids double-poking normal in-flight mail."""
+    monkeypatch.setenv("POSTBOX_SAFETY_POLL", "0.05")
+    state = {"n": 0}
+
+    class FakeResp:
+        status_code = 200
+        def __init__(self, msgs): self._m = msgs
+        def json(self): return self._m
+
+    class FakeClient:
+        async def get(self, *a, **k):
+            state["n"] += 1
+            # unread on the first poll only, then inbox is clear
+            return FakeResp([{"id": "m9", "sender": "x", "subject": "s"}] if state["n"] == 1 else [])
+
+    s = Session(client=FakeClient(), pane="%1", desired_name="w")
+    s.token = "tok"
+    poked = []
+    async def fake_poke(ev): poked.append(ev)
+    s._poke = fake_poke
+    t = asyncio.create_task(s._safety_loop())
+    await asyncio.sleep(0.25)
+    t.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await t
+    assert poked == []                                 # never persisted → no re-poke
 
 
 async def test_session_autoregisters_with_pane_and_wakes(tmp_path):

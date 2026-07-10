@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import asyncio
+
 import pytest
 
 from postbox.agents import AgentService
@@ -167,6 +169,21 @@ async def test_kill_unknown_window_raises(db):
     r = FakeRunner(out="postbox_main bob\n")
     with pytest.raises(RuntimeError):
         await _svc(db, r).kill("ghost")             # no such window anywhere
+
+
+async def test_reap_force_kills_hung_survivor(db):
+    """kill-window SIGHUPs a healthy copilot; a hung one that ignores it is SIGKILLed."""
+    proc = await asyncio.create_subprocess_exec("sleep", "60")
+    await _svc(db, FakeRunner())._reap(str(proc.pid))
+    await asyncio.wait_for(proc.wait(), timeout=3)   # SIGKILL delivered → it exits
+    assert proc.returncode is not None
+
+
+async def test_reap_is_noop_on_dead_or_bad_pid(db):
+    svc = _svc(db, FakeRunner())
+    await svc._reap(None)                # no pid → nothing
+    await svc._reap("not-a-number")      # unparseable → nothing
+    await svc._reap("2147480000")        # (almost certainly) dead pid → no raise
 
 
 async def test_spawn_endpoint_is_bearer_authed(tmp_path):
