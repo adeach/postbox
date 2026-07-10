@@ -72,8 +72,9 @@ async def test_tmux_wakeup_retries_enter_until_input_clears():
     state = {"reads": 0}
     async def capture(pane):
         state["reads"] += 1
-        # still in the input box for the first two checks, then submitted
-        if state["reads"] < 3:
+        # read #1 is the idle-check (no 'esc interrupt' → idle); then the submit loop
+        # sees the text still in the box for two checks, then submitted.
+        if state["reads"] < 4:
             return "conversation\n❯ 📬 New mail (message mZ). reply\n"
         return "conversation\n❯ 📬 New mail (message mZ). reply   12:00\n❯\n"
     w = TmuxWakeup(pane="%9", runner=fake_run, enter_delay=0, poll_interval=0,
@@ -81,6 +82,29 @@ async def test_tmux_wakeup_retries_enter_until_input_clears():
     await w.wake({"from": "bob", "subject": "", "message_id": "mZ"})
     enters = sum(1 for c in cmds if c[-1] == "Enter")
     assert enters == 3                                  # retried until it submitted
+
+
+async def test_tmux_wakeup_waits_until_idle_before_typing():
+    """A wakeup must NOT type into a busy (mid-turn) pane — that leaves the text
+    '[pending]' and it never submits. It waits for the 'esc interrupt' busy hint to
+    clear, THEN types + submits."""
+    from postbox.listener.wakeups import TmuxWakeup
+    cmds = []
+    async def fake_run(cmd): cmds.append(cmd)
+    state = {"reads": 0}
+    async def capture(pane):
+        state["reads"] += 1
+        if state["reads"] <= 2:
+            return "streaming...\n◉ Working · 2 KiB esc interrupt\n"   # BUSY
+        return "conversation\n❯\n"                                     # idle, empty box
+    w = TmuxWakeup(pane="%3", runner=fake_run, enter_delay=0, poll_interval=0,
+                   capturer=capture)
+    await w.wake({"from": "x", "subject": "y", "message_id": "m1"})
+    # nothing was typed during the two busy reads — the first send-keys happens only
+    # after the pane went idle (read #3)
+    assert state["reads"] >= 3
+    assert cmds and cmds[0][:3] == ["tmux", "send-keys", "-l"]   # typed once idle
+    assert any(c[-1] == "Enter" for c in cmds)                   # and submitted
 
 
 def test_build_wakeup_tmux():

@@ -22,6 +22,15 @@ def _notification_text(event: dict) -> str:
             f"Use your mail tools to check_inbox and read_message, then reply.")
 
 
+def _is_busy(pane: str) -> bool:
+    """True if Copilot is mid-turn (still processing). Its status line shows an
+    'esc interrupt' hint while a turn runs; when idle that hint is gone and the
+    line reads '/ commands · ? help'. Injecting a wakeup while busy leaves the
+    notification text sitting as '[pending]' and it never submits — silently
+    dropping the wake. So we wait for this to clear before poking."""
+    return "esc interrupt" in pane
+
+
 def _input_box_content(pane: str) -> str:
     """Extract the text currently in the agent's input box from a captured pane.
 
@@ -110,13 +119,14 @@ class TmuxWakeup:
 
     def __init__(self, pane: str, runner=_default_runner, enter_delay: float = 0.4,
                  capturer=_default_capturer, max_submit_attempts: int = 6,
-                 poll_interval: float = 0.6):
+                 poll_interval: float = 0.6, idle_timeout: float = 240.0):
         self.pane = pane
         self._run = runner
         self._enter_delay = enter_delay
         self._capture = capturer
         self._max_attempts = max_submit_attempts
         self._poll = poll_interval
+        self._idle_timeout = idle_timeout
 
     async def wake(self, event: dict) -> None:
         text = _notification_text(event)
@@ -124,6 +134,10 @@ class TmuxWakeup:
         # the input box. message_id is unique; fall back to a fixed phrase.
         marker = str(event.get("message_id") or "") or "New mail from"
         _log(f"WAKE pane={self.pane!r} marker={marker[:12]} delay={self._enter_delay}")
+        # CRITICAL: only poke when the agent is IDLE. Typing into a busy (mid-turn)
+        # Copilot TUI leaves the notification as '[pending]' and it never submits, so
+        # the wake is silently lost and the agent stalls with unread mail. Wait first.
+        await self._wait_until_idle()
         # -l sends the text literally (no key interpretation).
         await self._run(["tmux", "send-keys", "-l", "-t", self.pane, text])
         _log("  typed text")
@@ -146,6 +160,27 @@ class TmuxWakeup:
                 _log("  SUBMITTED (input cleared)")
                 return
         _log("  GAVE UP after max attempts (text still in input box)")
+
+    async def _wait_until_idle(self) -> None:
+        """Block until the agent's pane is idle (no 'esc interrupt' hint), so the
+        wakeup lands on a TUI that will actually accept + submit it. Bounded by
+        idle_timeout; if the turn runs longer we poke anyway as a last resort
+        (better a possibly-pending poke than none)."""
+        deadline = time.monotonic() + self._idle_timeout
+        waited = False
+        while time.monotonic() < deadline:
+            try:
+                pane = await self._capture(self.pane)
+            except Exception as e:
+                _log(f"  idle-check capture failed: {e!r}")
+                return          # can't read → don't block the wake forever
+            if not _is_busy(pane):
+                if waited:
+                    _log("  agent went idle → poking now")
+                return
+            waited = True
+            await asyncio.sleep(self._poll)
+        _log("  idle wait TIMED OUT (still busy) → poking anyway")
 
     async def _still_in_input(self, marker: str) -> bool:
         """True if our text is still sitting in the pane's input box (not submitted).
