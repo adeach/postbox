@@ -79,9 +79,10 @@ INSTRUCTIONS = (
     "silently.\n"
     "• ADDRESSING: message a local agent by its name; message an agent on a peer postbox as "
     "name@instance (e.g. 'reviewer@vm'). Call list_agents to see who exists.\n"
-    "• DELEGATING: use spawn_terminal to spin up ANOTHER copilot agent you can then talk to — "
-    "locally or on a peer (instance='vm'), optionally with its own model. This lets you build a "
-    "team (e.g. one agent per role: frontend, backend, reviewer, tester). Pass the SAME "
+    "• DELEGATING: use spawn_terminal to create ANOTHER Copilot agent (a real teammate you "
+    "message over mail), locally or on a peer (instance='vm'), optionally with its own model. "
+    "This lets you build a team (e.g. one agent per role: frontend, backend, reviewer, tester). "
+    "Re-using a name auto-replaces the old agent, so you never hit a name clash. Pass the SAME "
     "project='<task>' for every teammate so the whole team shares one tmux session. Wait until "
     "the result says registered=true, then message it by name. When YOU are a spawned worker, "
     "report your progress to whoever tasked you and ask them (via send_message) when you need "
@@ -263,15 +264,23 @@ def build_server():
     @mcp.tool()
     async def spawn_terminal(name: str, cwd: str = "", instance: str = "",
                              model: str = "", project: str = "") -> dict:
-        """Spin up a NEW interactive copilot agent (a window in a tmux session) that you
-        can then talk to. `project`: groups a team into ONE tmux session `postbox_<project>`
-        (one window per agent) — pass the SAME project for every teammate on a task so they
-        live together (attach the whole team with `tmux attach -t postbox_<project>`);
-        empty = the shared 'main' session. `instance`: empty = spawn locally, or a peer name
-        (e.g. "vm") to spawn on that peer (then message it at name@instance). `model`: set a
-        specific model (e.g. "claude-opus-4.8") — pass your OWN model to have it inherit
-        yours; empty = default. Returns {name, session, project, window, attach, registered,
-        address?}: message it once `registered` is true."""
+        """Create/spawn a NEW AI agent — a full interactive Copilot in its own tmux window —
+        that you delegate work to and talk to over postbox mail (send_message). Use this
+        whenever you need a teammate/worker/reviewer/tester to hand a task to, or to build a
+        multi-agent team. Unlike a one-shot subagent, this agent is persistent, has its own
+        identity/inbox, and you converse with it via send_message by `name`.
+
+        `name`: a short unique handle you'll message it by. If the name is already in use the
+        old agent is AUTOMATICALLY replaced (its window is torn down and the name reclaimed) —
+        you never need to pick a new name or clean up first.
+        `project`: groups a team into ONE tmux session `postbox_<project>` (one window per
+        agent) — pass the SAME project for every teammate on a task so they live together
+        (attach the whole team with `tmux attach -t postbox_<project>`); empty = 'main'.
+        `instance`: empty = spawn locally, or a peer name (e.g. "vm") to spawn on that peer
+        (then message it at name@instance). `model`: pick a model (e.g. "claude-opus-4.8") —
+        pass your OWN model to have it inherit yours; empty = default.
+        Returns {name, session, project, window, attach, registered, address?}: start messaging
+        it once `registered` is true."""
         return await session.tools.spawn_terminal(
             name, cwd or None, instance or None, model or None, project or None)
 

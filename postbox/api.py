@@ -255,6 +255,10 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         # then message it. Waits until the new agent registers so the caller can send
         # to it right away. (The UI uses the observer-guarded /terminals; this is Bearer.)
         # A remote `instance` relays the spawn to that peer (name@instance addressing).
+        # Guard: spawning your OWN name would reclaim (tombstone) the caller's identity —
+        # refuse it. (Spawning over ANOTHER existing agent auto-overwrites; see terminals.)
+        if payload.name == agent.address:
+            raise HTTPException(409, "can't spawn over your own identity — pick another name")
         if payload.instance and payload.instance != settings.instance:
             try:
                 return await app.state.federation.spawn_remote(

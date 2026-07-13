@@ -90,6 +90,31 @@ class AgentService:
         await self.db.execute(
             "UPDATE agents SET status='deregistered' WHERE id=?", (agent_id,))
 
+    async def release_name(self, address: str) -> None:
+        """Free a name so it can be re-spawned ('overwrite' an existing agent). Renames
+        the old identity's address to a hidden tombstone and deregisters it — the name
+        is available immediately while the old row + its messages stay intact (FK-safe:
+        nothing is deleted, and messages reference the id, not the address).
+
+        Guarded at the trust boundary: refuses to reclaim a PERSON's identity or a
+        managed FLEET agent — those conflicts are intentional, not accidental clutter."""
+        row = await self.db.fetchone(
+            "SELECT id, profile FROM agents WHERE address=? AND status<>'deregistered'",
+            (address,))
+        if not row:
+            return                                  # nothing live holds the name
+        agent_id = row[0]
+        profile = json.loads(row[1]) if row[1] else {}
+        if profile and profile.get("human"):
+            raise ValueError(f"'{address}' is a person's identity — pick another name")
+        if await self.db.fetchone("SELECT 1 FROM fleet_agents WHERE address=?", (address,)):
+            raise ValueError(
+                f"'{address}' is a managed fleet agent — remove it from the fleet first")
+        await self.db.execute(
+            "UPDATE agents SET address = address || '#reclaimed-' || ?, "
+            "status='deregistered' WHERE id=?",
+            (new_id()[:8], agent_id))
+
     async def _get(self, agent_id: str) -> AgentOut:
         r = await self.db.fetchone(
             "SELECT id,name,address,profile,status FROM agents WHERE id=?", (agent_id,))

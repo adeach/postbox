@@ -111,17 +111,44 @@ async def test_spawn_rejects_bad_cwd(db):
     assert r.calls == []
 
 
-async def test_spawn_rejects_existing_name_online_or_forgotten(db):
+async def test_spawn_overwrites_existing_name(db):
+    """Re-spawning a taken name AUTO-RECLAIMS it (no 409): the old identity is freed +
+    its window torn down, then the new agent spawns."""
     agents = AgentService(db)
     a = await agents.register(RegisterAgent(name="alice"))     # status='online'
-    r = FakeRunner()
+    r = FakeRunner()                                           # no windows to kill
     svc = TerminalService(SimpleNamespace(port=8765), agents, runner=r)
-    with pytest.raises(ValueError):
-        await svc.spawn("alice")                    # online name → reject
-    await agents.deregister(a.id)                   # 'forget' it
-    with pytest.raises(ValueError):
-        await svc.spawn("alice")                    # STILL reserved (would 409 at register)
-    assert r.calls == []                            # nothing spawned either time
+    res = await svc.spawn("alice")                             # was a 409 before — now reclaims
+    assert res["name"] == "alice"
+    assert any(c[:2] == ["tmux", "new-session"] or c[:2] == ["tmux", "new-window"]
+               for c in r.calls)                               # it actually spawned
+    # the old identity was freed (renamed to a hidden tombstone), so 'alice' is available
+    assert await agents.get_by_address("alice") is None
+    old = await agents.get_by_id(a.id)
+    assert old.status == "deregistered" and old.address.startswith("alice#reclaimed-")
+
+
+async def test_spawn_refuses_to_overwrite_a_person(db):
+    agents = AgentService(db)
+    await agents.register(RegisterAgent(name="adam", profile={"human": True}))
+    r = FakeRunner()
+    with pytest.raises(ValueError, match="person"):
+        await TerminalService(SimpleNamespace(port=8765), agents, runner=r).spawn("adam")
+    assert r.calls == []                                       # nothing spawned
+
+
+async def test_spawn_refuses_to_overwrite_a_fleet_agent(db):
+    agents = AgentService(db)
+    await agents.register(RegisterAgent(name="worker"))
+    # a managed fleet identity references agents(address) — reclaiming it would break the fleet
+    from postbox.auth import now_iso
+    await db.execute(
+        "INSERT INTO fleet_agents(address,token,command_json,created_at) VALUES(?,?,?,?)",
+        ("worker", "tok", "[]", now_iso()))
+    r = FakeRunner()
+    with pytest.raises(ValueError, match="fleet"):
+        await TerminalService(SimpleNamespace(port=8765), agents, runner=r).spawn("worker")
+    assert r.calls == []
 
 
 async def test_wait_registered(db):
@@ -212,9 +239,12 @@ async def test_spawn_endpoint_is_bearer_authed(tmp_path):
             assert rp.json()["session"] == "postbox_feat" and rp.json()["project"] == "feat"
             # no bearer token → 401 (not open like the observer UI route)
             assert (await c.post("/spawn", json={"name": "helper2"})).status_code == 401
-            # collision with the caller's own name → 409
+            # spawning your OWN name → 409 (can't tombstone yourself)
             assert (await c.post("/spawn", headers=h,
                                  json={"name": "caller"})).status_code == 409
+            # spawning over ANOTHER existing agent auto-overwrites (no 409, no manual cleanup)
+            assert (await c.post("/spawn", headers=h,
+                                 json={"name": "helper"})).status_code == 201
 
 
 async def test_federation_spawn_endpoint_peer_token_gated(tmp_path):

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import re
 import signal
@@ -79,13 +80,14 @@ class TerminalService:
             raise ValueError(f"cwd is not a directory: {cwd}")
         if model is not None and not MODEL_RE.match(model):
             raise ValueError("model must be a plain model id (letters, digits, '.', '_', '-')")
-        # a row by this name (even a 'forgotten'/offline one) still holds the address,
-        # so the spawned copilot's registration would 409. Reject up front, clearly.
+        # OVERWRITE: if the name is already taken, reclaim it so re-spawning "just works"
+        # instead of a 409. Kill the old agent's window (+reap) and free its identity.
+        # release_name is guarded — it raises (→ 409) only for a person or a managed fleet
+        # agent, which are real conflicts you shouldn't silently clobber.
         existing = await self.agents.get_by_address(name)
         if existing is not None:
-            raise ValueError(
-                f"'{name}' is already taken — pick another name "
-                "(a forgotten or offline agent still reserves its name)")
+            await self.agents.release_name(name)     # frees the name (or raises for human/fleet)
+            await self._kill_window_if_present(name)  # tear down the stale interactive session
 
         session = PREFIX + project
         # point the spawned copilot's MCP back at THIS server (so it registers here
@@ -117,6 +119,15 @@ class TerminalService:
         return [{"name": win, "session": PREFIX + proj, "project": proj, "window": win,
                  "attach": self._attach_cmd(PREFIX + proj, win)}
                 for proj, win in sorted(pairs)]
+
+    async def _kill_window_if_present(self, name: str) -> None:
+        """Best-effort: tear down a stale window for this name if one exists (used by the
+        overwrite path). Unlike kill(), a missing window is fine — nothing to reclaim."""
+        for _proj, win in await self._all_windows():
+            if win == name:
+                with contextlib.suppress(Exception):
+                    await self.kill(name)
+                return
 
     async def kill(self, name: str) -> None:
         if not NAME_RE.match(name or ""):
