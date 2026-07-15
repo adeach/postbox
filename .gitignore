@@ -11,3 +11,10 @@ data/
 mockups/*.png
 
 .worktrees/
+
+# local tooling & non-repo design docs (kept local, out of repo)
+mutagen.yml
+mutagen.yml.lock
+.claude/
+doc/
+docs/superpowers/
